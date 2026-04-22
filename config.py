@@ -7,7 +7,7 @@ Each task config repeats the full contents (no inheritance). Simpler
 loader, more YAML duplication — accepted tradeoff.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 import yaml
@@ -39,7 +39,9 @@ class LLMConfig:
     model: str
     temperature: float = 0.7
     max_tokens: int = 2000
-    base_url: str | None = None  # ollama only
+    base_url: str | None = None
+    max_retries: int = 5
+    retry_delay: float = 1.0
 
 
 @dataclass
@@ -48,6 +50,7 @@ class RunnerConfig:
     success_threshold: float
     templates_dir: str
     log_dir: str
+    max_parse_retries: int = 3
 
 
 @dataclass
@@ -102,4 +105,3 @@ def load_config(path: str | Path) -> Config:
             target=TargetPose(**raw['task']['target']),
         ),
     )
-    
