@@ -233,6 +233,14 @@ class OllamaClient(LLMClient):
         ))
 
 
+PROVIDERS = {
+    'anthropic': AnthropicClient,
+    'openai': OpenAIClient,
+    'gemini': GeminiClient,
+    'ollama': OllamaClient,
+}
+
+
 def make_client(provider: str, model: str, **kwargs) -> LLMClient:
     """Factory: instantiate the right LLMClient for a provider name.
 
