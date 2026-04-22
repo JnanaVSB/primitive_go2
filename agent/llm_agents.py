@@ -181,50 +181,56 @@ class GeminiClient(LLMClient):
 
 
 class OllamaClient(LLMClient):
-    """Ollama via the `ollama` SDK. No API key; requires base_url.
+    """Ollama via its OpenAI-compatible API at /v1.
 
-    Use this for self-hosted models on a cluster, e.g.:
-        OllamaClient(model='llama3.1:70b', base_url='http://cluster:11434')
+    Reuses the OpenAI Python SDK pointed at Ollama's base URL. This is the
+    approach Ollama itself recommends for Python clients and avoids a
+    separate `ollama` SDK dependency.
+
+    Example:
+        OllamaClient(model='gpt-oss:120b', base_url='http://sg008:11434')
     """
 
-    def __init__(self, model: str, base_url: str = "http://localhost:11434", **kwargs):
+    def __init__(
+        self,
+        model: str,
+        base_url: str = "http://localhost:11434",
+        **kwargs,
+    ):
         super().__init__(model, **kwargs)
         try:
-            import ollama
-            import httpx
+            import openai
         except ImportError as e:
             raise ImportError(
-                "Ollama SDK not installed. Run: pip install ollama"
+                "OpenAI SDK required for OllamaClient. "
+                "Run: pip install openai"
             ) from e
-        self._ollama = ollama
-        self._httpx = httpx
-        self._client = ollama.Client(host=base_url)
+        self._openai = openai
+        # Ollama exposes an OpenAI-compatible API at /v1
+        if not base_url.endswith("/v1"):
+            base_url = base_url.rstrip("/") + "/v1"
+        self._client = openai.OpenAI(
+            base_url=base_url,
+            api_key="ollama",  # Ollama ignores this but the SDK requires a non-empty string
+        )
 
     def _raw_generate(self, prompt: str) -> str:
-        response = self._client.generate(
+        response = self._client.chat.completions.create(
             model=self.model,
-            prompt=prompt,
-            options={
-                "temperature": self.temperature,
-                "num_predict": self.max_tokens,
-            },
+            max_tokens=self.max_tokens,
+            temperature=self.temperature,
+            messages=[{"role": "user", "content": prompt}],
         )
-        return response['response']
+        return response.choices[0].message.content
 
     def _is_retriable(self, exc: Exception) -> bool:
+        e = self._openai
         return isinstance(exc, (
-            self._httpx.ConnectError,
-            self._httpx.TimeoutException,
-            self._httpx.RemoteProtocolError,
+            e.RateLimitError,
+            e.APIConnectionError,
+            e.APITimeoutError,
+            e.InternalServerError,
         ))
-
-
-PROVIDERS = {
-    'anthropic': AnthropicClient,
-    'openai': OpenAIClient,
-    'gemini': GeminiClient,
-    'ollama': OllamaClient,
-}
 
 
 def make_client(provider: str, model: str, **kwargs) -> LLMClient:
