@@ -24,35 +24,37 @@ class LLMError(Exception):
 class LLMClient(ABC):
     """Abstract base for LLM providers.
 
-    Concrete subclasses implement `_raw_generate(prompt)`. Retry with
-    exponential backoff on transient errors is handled by `generate()`.
+    Retry counts and backoff are instance attributes, typically passed
+    in from config.
     """
 
-    MAX_RETRIES = 5
-    INITIAL_BACKOFF = 1.0  # seconds
-
-    def __init__(self, model: str, temperature: float = 0.7, max_tokens: int = 2000):
+    def __init__(
+        self,
+        model: str,
+        temperature: float = 0.7,
+        max_tokens: int = 2000,
+        max_retries: int = 5,
+        retry_delay: float = 1.0,
+    ):
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
 
     @abstractmethod
-    def _raw_generate(self, prompt: str) -> str:
-        """Provider-specific API call. Returns the LLM's text response."""
+    def _raw_generate(self, prompt: str) -> str: ...
 
     @abstractmethod
-    def _is_retriable(self, exc: Exception) -> bool:
-        """Return True if this exception should trigger a retry."""
+    def _is_retriable(self, exc: Exception) -> bool: ...
 
     def generate(self, prompt: str) -> str:
-        """Generate with retry on transient errors."""
-        backoff = self.INITIAL_BACKOFF
-        last_exc = None
-        for attempt in range(1, self.MAX_RETRIES + 1):
+        backoff = self.retry_delay
+        for attempt in range(1, self.max_retries + 1):
             try:
                 return self._raw_generate(prompt)
             except Exception as e:
-                if not self._is_retriable(e) or attempt == self.MAX_RETRIES:
+                if not self._is_retriable(e) or attempt == self.max_retries:
                     raise LLMError(
                         f"{type(self).__name__} failed after {attempt} attempt(s): {e}"
                     ) from e
@@ -60,10 +62,9 @@ class LLMClient(ABC):
                     f"{type(self).__name__} attempt {attempt} failed ({e}); "
                     f"retrying in {backoff:.1f}s"
                 )
-                last_exc = e
                 time.sleep(backoff)
                 backoff *= 2
-        raise LLMError(f"Unreachable")  # loop always returns or raises
+        raise LLMError("Unreachable")
 
 
 class AnthropicClient(LLMClient):
