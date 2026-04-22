@@ -24,7 +24,7 @@ llm:
 
 runner:
   max_iterations: 10
-  success_threshold: -0.05
+  success_threshold: -0.0
   max_parse_retries: 3
   templates_dir: templates
   log_dir: logs
@@ -32,6 +32,6 @@ runner:
 task:
   name: sit
   target:
-    h: 0.17
-    roll: 0.0
-    pitch: -0.3
+    h: 0.15  # 0.17 -best values
+    roll: 0.0  
+    pitch: -0.7   # 0.3

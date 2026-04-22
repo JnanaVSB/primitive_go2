@@ -1,8 +1,12 @@
 """Entry point for primitive_go2.
 
     python main.py --config configs/sit.yaml
-    python main.py --config configs/sit.yaml --resume logs/sit_20260422_030000/trial_log.json
+    python main.py --config configs/sit.yaml --resume logs/sit_2026-04-22_05-13-50/trial_log.json
 """
+
+import os
+# Use headless GPU rendering (no display needed). Must be set before MuJoCo imports.
+os.environ.setdefault("MUJOCO_GL", "egl")
 
 import argparse
 import logging
@@ -14,20 +18,13 @@ from runner.primitivellm import run
 
 def main():
     parser = argparse.ArgumentParser(description="Run the FORGE loop on the Go2.")
-    parser.add_argument(
-        "--config", required=True,
-        help="Path to YAML config file (e.g., configs/sit.yaml)",
-    )
-    parser.add_argument(
-        "--resume", default=None,
-        help="Path to existing trial_log.json to continue from",
-    )
-    parser.add_argument(
-        "--log-level", default="INFO",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-    )
+    parser.add_argument("--config", required=True)
+    parser.add_argument("--resume", default=None)
+    parser.add_argument("--log-level", default="INFO",
+                        choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     args = parser.parse_args()
 
+    # Console-only base config. Per-run file logging is added later by the loop.
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",

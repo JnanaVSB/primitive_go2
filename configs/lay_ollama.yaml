@@ -32,6 +32,6 @@ runner:
 task:
   name: lay
   target:
-    h: 0.10
+    h: 0.15
     roll: 0.0
     pitch: 0.0
