@@ -1,0 +1,15 @@
+{% if trial_history %}
+# Previous attempts
+
+{% for trial in trial_history %}
+Iteration {{ trial.iteration }}:
+    Policy: {{ trial.policy_summary }}
+    Reward: {{ "%.4f"|format(trial.reward) }}
+    {% if trial.rationale -%}
+    Your reasoning: {{ trial.rationale }}
+    {%- endif %}
+
+{% endfor %}
+{% else %}
+# No previous attempts yet — this is iteration 1.
+{% endif %}

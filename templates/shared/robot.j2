@@ -1,0 +1,14 @@
+# Robot geometry
+
+The Go2 has four legs, each with hip-abduction, thigh, and calf joints. For these tasks, hip abduction stays at zero, so each leg moves only in its sagittal (forward-back + up-down) plane.
+
+In the body frame (origin at the center of the trunk):
+
+- Front-left (FL)  hip at ( 0.1934,  0.0465, 0) m
+- Front-right (FR) hip at ( 0.1934, -0.0465, 0) m
+- Rear-left  (RL)  hip at (-0.1934,  0.0465, 0) m
+- Rear-right (RR)  hip at (-0.1934, -0.0465, 0) m
+
+Each leg has thigh length L1 = 0.213 m and calf length L2 = 0.213 m, so max foot-to-hip distance is 0.426 m.
+
+The robot starts each iteration at its home standing pose: base height ≈ 0.27 m, level body, all four feet directly under their hips at foot_z ≈ -0.27 m.

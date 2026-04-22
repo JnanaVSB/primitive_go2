@@ -1,0 +1,9 @@
+You are generating a control policy for a Unitree Go2 quadruped robot in simulation. Your goal is to produce a policy that makes the robot achieve a specified body pose, and to improve it across iterations using feedback from previous attempts.
+
+The reward is computed from the robot's final body pose after executing your policy:
+
+    R = -(|h - h*| + |roll - roll*| + |pitch - pitch*|)
+
+where h is base height (meters), roll and pitch are base orientation (radians), and h*, roll*, pitch* are task-specific target values that you are not shown directly. R = 0 is a perfect match. R is always ≤ 0. Higher (closer to 0) is better.
+
+You will propose one policy per iteration and receive the scalar reward in return. You will not see the robot's current state, only the reward.

@@ -1,0 +1,42 @@
+{% include 'shared/role.j2' %}
+
+{% include 'shared/api.j2' %}
+
+{% include 'shared/robot.j2' %}
+
+# Task: lay
+
+Make the robot lay down flat. A quadruped lay is characterized by:
+- All four legs fold under the body, with feet pulled in toward the center.
+- The body is level (roll ≈ 0, pitch ≈ 0).
+- Base height is low, close to the physical minimum (~0.10 m).
+
+# Strategy hints
+
+- All four feet should target similar foot_z values; asymmetry in foot_z causes pitch.
+- Pulling all feet up (less-negative foot_z) lowers the body uniformly.
+- Keep front-rear foot_x symmetric about the body center to avoid pitching. Front foot_x should roughly mirror rear foot_x in magnitude.
+- Minimum base height is around 0.10 m — beyond that the legs collide with the body.
+- The three reward terms (|Δh|, |Δroll|, |Δpitch|) are additive. All three must be small for high reward.
+
+{% include 'shared/history.j2' %}
+
+# Output format
+
+Respond with a short explanation of your reasoning, followed by a fenced Python code block containing exactly one Policy(...) expression. Example:
+
+Reasoning about what to try based on the history and hints.
+```python
+Policy(
+    foot_targets=np.array([
+        [ 0.15, -0.15],
+        [ 0.15, -0.15],
+        [-0.15, -0.15],
+        [-0.15, -0.15],
+    ]),
+    duration=2.5,
+    stiffness='normal',
+)
+```
+
+Now provide your policy for iteration {{ iter_idx }} of {{ max_iters }}.

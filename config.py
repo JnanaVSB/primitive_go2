@@ -1,0 +1,105 @@
+"""Config loader.
+
+Reads YAML into typed dataclasses. The structure mirrors the YAML files
+in configs/ — env, primitive, stiffness_modes, llm, runner, task.
+
+Each task config repeats the full contents (no inheritance). Simpler
+loader, more YAML duplication — accepted tradeoff.
+"""
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Literal
+import yaml
+
+
+@dataclass
+class EnvConfig:
+    xml_path: str
+    control_substeps: int
+    initial_base_height: float
+    initial_angles: list[float]
+    settle_steps: int
+
+
+@dataclass
+class PrimitiveConfig:
+    settle_steps_after: int
+
+
+@dataclass
+class StiffnessGains:
+    kp: float
+    kd: float
+
+
+@dataclass
+class LLMConfig:
+    provider: Literal['anthropic', 'openai', 'gemini', 'ollama']
+    model: str
+    temperature: float = 0.7
+    max_tokens: int = 2000
+    base_url: str | None = None  # ollama only
+
+
+@dataclass
+class RunnerConfig:
+    max_iterations: int
+    success_threshold: float
+    templates_dir: str
+    log_dir: str
+
+
+@dataclass
+class TargetPose:
+    h: float
+    roll: float
+    pitch: float
+
+
+@dataclass
+class TaskConfig:
+    name: str
+    target: TargetPose
+
+
+@dataclass
+class Config:
+    env: EnvConfig
+    primitive: PrimitiveConfig
+    stiffness_modes: dict[str, StiffnessGains]
+    llm: LLMConfig
+    runner: RunnerConfig
+    task: TaskConfig
+
+
+def load_config(path: str | Path) -> Config:
+    """Load a YAML config file into a Config dataclass.
+
+    Raises:
+        FileNotFoundError: config file doesn't exist.
+        KeyError: required field missing.
+        TypeError: field has wrong type.
+    """
+    path = Path(path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Config file not found: {path}")
+
+    with open(path) as f:
+        raw = yaml.safe_load(f)
+
+    return Config(
+        env=EnvConfig(**raw['env']),
+        primitive=PrimitiveConfig(**raw['primitive']),
+        stiffness_modes={
+            name: StiffnessGains(**gains)
+            for name, gains in raw['stiffness_modes'].items()
+        },
+        llm=LLMConfig(**raw['llm']),
+        runner=RunnerConfig(**raw['runner']),
+        task=TaskConfig(
+            name=raw['task']['name'],
+            target=TargetPose(**raw['task']['target']),
+        ),
+    )
+    

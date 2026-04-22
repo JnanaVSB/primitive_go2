@@ -1,0 +1,40 @@
+{% include 'shared/role.j2' %}
+
+{% include 'shared/api.j2' %}
+
+{% include 'shared/robot.j2' %}
+
+# Task: sit
+
+Make the robot sit. A quadruped sit is characterized by:
+- Rear legs fold under the body, with rear feet pulled forward and up toward the belly.
+- Front legs remain extended, supporting the weight of the shoulders.
+- The body tilts back (negative pitch), with the rear of the body lower than the front.
+- Base height is lower than standing, but not as low as laying.
+
+# Strategy hints
+
+- Rear foot_z controls how much the rear drops. Less-negative foot_z (closer to zero) pulls the rear up and lowers the body.
+- Rear foot_x controls rear leg tuck. More-forward values (closer to 0 or positive) fold the rear legs further under the body.
+- Front feet should stay near their home positions to keep the shoulders supported.
+- Symmetry: left and right legs should have identical foot targets unless you have a specific reason otherwise.
+- The three reward terms (|Δh|, |Δroll|, |Δpitch|) are additive. All three must be small for high reward.
+
+{% include 'shared/history.j2' %}
+
+# Output format
+
+Respond with a short explanation of your reasoning, followed by a fenced Python code block containing exactly one Policy(...) expression. Example:
+
+Policy(
+    foot_targets=np.array([
+        [ 0.1934, -0.27],
+        [ 0.1934, -0.27],
+        [-0.12,   -0.05],
+        [-0.12,   -0.05],
+    ]),
+    duration=2.5,
+    stiffness='normal',
+)
+
+Now provide your policy for iteration {{ iter_idx }} of {{ max_iters }}.
