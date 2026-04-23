@@ -34,7 +34,7 @@ def execute_policy(
                             target before measuring base state
 
     Returns:
-        dict with 'h', 'roll', 'pitch', and 'foot_world_z' (list of 4 floats).
+        dict {'h': float, 'roll': float, 'pitch': float} — base pose after settle.
     """
     # 1. Current joint angles (starting point of trajectory)
     start_joints = env.data.qpos[env._qpos_idx].copy()
@@ -60,37 +60,21 @@ def execute_policy(
     for _ in range(settle_steps_after):
         env.step(final_target)
 
-    # 7. Read base state and foot positions
-    return _extract_base_pose(env, kin)
+    # 7. Read base state
+    return _extract_base_pose(env)
 
 
-def _extract_base_pose(env, kin: Go2Kinematics) -> dict:
-    """Read base height, roll, pitch, and foot world z from env's MuJoCo data.
+def _extract_base_pose(env) -> dict:
+    """Read base height, roll, pitch from env's MuJoCo data.
 
     Height is world-frame z of the base. Roll and pitch are extracted from
     the base quaternion using standard ZYX Euler conventions.
-    Foot world z is read directly from MuJoCo's geom positions in world frame,
-    so it is correct regardless of body tilt.
     """
     h = float(env.data.qpos[2])
     quat_wxyz = env.data.qpos[3:7]  # MuJoCo convention: w, x, y, z
 
     roll, pitch = _quat_to_roll_pitch(quat_wxyz)
-
-    # Read foot z directly from MuJoCo in world frame
-    foot_names = ['FR', 'FL', 'RR', 'RL']
-    foot_world_z = []
-    for name in foot_names:
-        geom_id = mujoco.mj_name2id(env.model, mujoco.mjtObj.mjOBJ_GEOM, name)
-        z = float(env.data.geom_xpos[geom_id][2])  # world z
-        foot_world_z.append(z)
-
-    return {
-        'h': h,
-        'roll': float(roll),
-        'pitch': float(pitch),
-        'foot_world_z': foot_world_z,
-    }
+    return {'h': h, 'roll': float(roll), 'pitch': float(pitch)}
 
 
 def _quat_to_roll_pitch(quat_wxyz: np.ndarray) -> tuple[float, float]:
