@@ -31,6 +31,7 @@ runner:
 
 task:
   name: sit
+  max_foot_z: 0.15
   target:
     h: 0.15  # 0.17 -best values
     roll: 0.0  

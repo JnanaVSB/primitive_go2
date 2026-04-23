@@ -34,7 +34,7 @@ def execute_policy(
                             target before measuring base state
 
     Returns:
-        dict {'h': float, 'roll': float, 'pitch': float} — base pose after settle.
+        dict with 'h', 'roll', 'pitch', and 'foot_world_z' (list of 4 floats).
     """
     # 1. Current joint angles (starting point of trajectory)
     start_joints = env.data.qpos[env._qpos_idx].copy()
@@ -60,21 +60,33 @@ def execute_policy(
     for _ in range(settle_steps_after):
         env.step(final_target)
 
-    # 7. Read base state
-    return _extract_base_pose(env)
+    # 7. Read base state and foot positions
+    return _extract_base_pose(env, kin)
 
 
-def _extract_base_pose(env) -> dict:
-    """Read base height, roll, pitch from env's MuJoCo data.
+def _extract_base_pose(env, kin: Go2Kinematics) -> dict:
+    """Read base height, roll, pitch, and foot world z from env's MuJoCo data.
 
     Height is world-frame z of the base. Roll and pitch are extracted from
     the base quaternion using standard ZYX Euler conventions.
+    Foot world z = body height + foot z in body frame, for each of the 4 feet.
     """
     h = float(env.data.qpos[2])
     quat_wxyz = env.data.qpos[3:7]  # MuJoCo convention: w, x, y, z
 
     roll, pitch = _quat_to_roll_pitch(quat_wxyz)
-    return {'h': h, 'roll': float(roll), 'pitch': float(pitch)}
+
+    # Foot positions in body frame from current joint angles
+    joints = env.data.qpos[env._qpos_idx].copy()
+    foot_positions = kin.forward_kinematics(joints)  # shape (4, 2): (foot_x, foot_z)
+    foot_world_z = [float(h + foot_positions[i, 1]) for i in range(4)]
+
+    return {
+        'h': h,
+        'roll': float(roll),
+        'pitch': float(pitch),
+        'foot_world_z': foot_world_z,
+    }
 
 
 def _quat_to_roll_pitch(quat_wxyz: np.ndarray) -> tuple[float, float]:

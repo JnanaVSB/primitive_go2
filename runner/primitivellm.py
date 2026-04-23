@@ -21,7 +21,7 @@ import numpy as np
 
 from config import Config
 from env.env import Go2Env
-from env.reward import compute_pose_reward
+from env.reward import compute_pose_reward, check_foot_termination, TERMINATION_PENALTY
 from world.kinematics import Go2Kinematics
 from world.primitive import execute_policy
 from agent.policy import Policy
@@ -176,7 +176,20 @@ def _execute_and_record(cfg: Config, policy: Policy, video_path: Path) -> float:
         base_state = execute_policy(
             env, kin, policy, cfg.primitive.settle_steps_after,
         )
-        reward = compute_pose_reward(base_state, asdict(cfg.task.target))
+
+        # Check foot termination if max_foot_z is configured
+        max_foot_z = getattr(cfg.task, 'max_foot_z', None)
+        if max_foot_z is not None and check_foot_termination(
+            base_state['foot_world_z'], max_foot_z,
+        ):
+            logger.info(
+                f"Foot termination triggered: foot_world_z={base_state['foot_world_z']}, "
+                f"max_foot_z={max_foot_z}"
+            )
+            reward = TERMINATION_PENALTY
+        else:
+            reward = compute_pose_reward(base_state, asdict(cfg.task.target))
+
         env.save_video(video_path)
     finally:
         env.close()
