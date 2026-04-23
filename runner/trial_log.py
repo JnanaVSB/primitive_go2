@@ -1,8 +1,11 @@
 """Trial history (Γ) for the FORGE loop.
 
-Accumulates (iteration, policy, reward, rationale) records across iterations
+Accumulates (iteration, policies, rewards, rationale) records across iterations
 and provides them as TrialRecord objects for prompt rendering. Supports
 JSON persistence so runs can be resumed or inspected after the fact.
+
+Handles both single-task runs (one policy, one reward) and sequence runs
+(multiple policies, multiple rewards with per-step thresholds).
 """
 
 import json
@@ -17,30 +20,46 @@ from agent.policy import Policy
 class TrialEntry:
     """One iteration of the FORGE loop.
 
-    This is the internal record. The prompt builder consumes a rendered
-    view (TrialRecord) via to_prompt_record(), which flattens the Policy
-    into a human-readable summary string.
+    For single tasks: policies has 1 item, rewards has 1 item.
+    For sequences:    policies has N items, rewards has N items.
     """
     iteration: int
-    policy: Policy
-    reward: float
+    policies: list[Policy]
+    rewards: list[float]
     rationale: str = ""
+    step_names: list[str] = field(default_factory=list)
+
+    @property
+    def reward(self) -> float:
+        """Total reward (sum of all step rewards). Used for best-of ranking."""
+        return sum(self.rewards)
 
     def to_dict(self) -> dict:
         return {
             'iteration': self.iteration,
-            'policy': self.policy.to_dict(),
-            'reward': self.reward,
+            'policies': [p.to_dict() for p in self.policies],
+            'rewards': self.rewards,
             'rationale': self.rationale,
+            'step_names': self.step_names,
         }
 
     @classmethod
     def from_dict(cls, d: dict) -> 'TrialEntry':
+        # Backward compatible: old logs have 'policy' and 'reward' (singular)
+        if 'policy' in d and 'policies' not in d:
+            policies = [Policy.from_dict(d['policy'])]
+            rewards = [d['reward']]
+            step_names = d.get('step_names', [])
+        else:
+            policies = [Policy.from_dict(p) for p in d['policies']]
+            rewards = d['rewards']
+            step_names = d.get('step_names', [])
         return cls(
             iteration=d['iteration'],
-            policy=Policy.from_dict(d['policy']),
-            reward=d['reward'],
+            policies=policies,
+            rewards=rewards,
             rationale=d.get('rationale', ''),
+            step_names=step_names,
         )
 
 
@@ -50,13 +69,20 @@ class TrialLog:
     def __init__(self, entries: list[TrialEntry] | None = None):
         self.entries: list[TrialEntry] = list(entries) if entries else []
 
-    def append(self, policy: Policy, reward: float, rationale: str = ""):
+    def append(
+        self,
+        policies: list[Policy],
+        rewards: list[float],
+        rationale: str = "",
+        step_names: list[str] | None = None,
+    ):
         """Add a new entry. Iteration number is inferred from current length."""
         entry = TrialEntry(
             iteration=len(self.entries) + 1,
-            policy=policy,
-            reward=reward,
+            policies=policies,
+            rewards=rewards,
             rationale=rationale,
+            step_names=step_names or [],
         )
         self.entries.append(entry)
 
@@ -71,27 +97,38 @@ class TrialLog:
 
     @property
     def best(self) -> TrialEntry | None:
-        """Entry with the highest reward, or None if empty."""
+        """Entry with the highest total reward, or None if empty."""
         if not self.entries:
             return None
         return max(self.entries, key=lambda e: e.reward)
 
     def to_prompt_records(self) -> list:
-        """Convert entries to the TrialRecord format the prompt builder expects.
-
-        Imports here to avoid a circular import (prompt.py imports nothing
-        from runner; this file imports TrialRecord only when rendering).
-        """
+        """Convert entries to the TrialRecord format the prompt builder expects."""
         from agent.prompt import TrialRecord
-        return [
-            TrialRecord(
+        records = []
+        for e in self.entries:
+            if len(e.policies) == 1:
+                # Single task — same format as before
+                policy_summary = _summarize_policy(e.policies[0])
+                reward_summary = f"{e.rewards[0]:.4f}"
+            else:
+                # Sequence — show each step
+                parts = []
+                for i, (pol, rew) in enumerate(zip(e.policies, e.rewards)):
+                    name = e.step_names[i] if i < len(e.step_names) else f"step_{i+1}"
+                    parts.append(f"  {name}: {_summarize_policy(pol)}  reward={rew:.4f}")
+                policy_summary = "\n".join(parts)
+                reward_summary = " | ".join(
+                    f"{e.step_names[i] if i < len(e.step_names) else f'step_{i+1}'}: {r:.4f}"
+                    for i, r in enumerate(e.rewards)
+                )
+            records.append(TrialRecord(
                 iteration=e.iteration,
-                policy_summary=_summarize_policy(e.policy),
-                reward=e.reward,
+                policy_summary=policy_summary,
+                reward=reward_summary,
                 rationale=e.rationale,
-            )
-            for e in self.entries
-        ]
+            ))
+        return records
 
     def save(self, path: str | Path):
         """Persist to JSON."""

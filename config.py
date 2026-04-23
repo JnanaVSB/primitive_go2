@@ -3,11 +3,15 @@
 Reads YAML into typed dataclasses. The structure mirrors the YAML files
 in configs/ — env, primitive, stiffness_modes, llm, runner, task.
 
+Supports two task formats:
+  1. Single task:   task: {name: sit, target: {h: 0.15, ...}}
+  2. Sequence:      task: {name: lay_stand, sequence: [{name: lay, target: ...}, {name: stand, target: ...}]}
+
 Each task config repeats the full contents (no inheritance). Simpler
 loader, more YAML duplication — accepted tradeoff.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 import yaml
@@ -61,9 +65,29 @@ class TargetPose:
 
 
 @dataclass
-class TaskConfig:
+class TaskStep:
+    """One step in a task sequence (e.g. lay, then stand)."""
     name: str
     target: TargetPose
+    success_threshold: float = -0.05
+
+
+@dataclass
+class TaskConfig:
+    name: str
+    target: TargetPose | None = None
+    sequence: list[TaskStep] | None = None
+
+    @property
+    def is_sequence(self) -> bool:
+        return self.sequence is not None
+
+    @property
+    def steps(self) -> list[TaskStep]:
+        """Return task steps — works for both single and sequence configs."""
+        if self.sequence is not None:
+            return self.sequence
+        return [TaskStep(name=self.name, target=self.target)]
 
 
 @dataclass
@@ -91,6 +115,24 @@ def load_config(path: str | Path) -> Config:
     with open(path) as f:
         raw = yaml.safe_load(f)
 
+    task_raw = raw['task']
+
+    if 'sequence' in task_raw:
+        sequence = [
+            TaskStep(
+                name=step['name'],
+                target=TargetPose(**step['target']),
+                success_threshold=step.get('success_threshold', -0.05),
+            )
+            for step in task_raw['sequence']
+        ]
+        task = TaskConfig(name=task_raw['name'], sequence=sequence)
+    else:
+        task = TaskConfig(
+            name=task_raw['name'],
+            target=TargetPose(**task_raw['target']),
+        )
+
     return Config(
         env=EnvConfig(**raw['env']),
         primitive=PrimitiveConfig(**raw['primitive']),
@@ -100,8 +142,5 @@ def load_config(path: str | Path) -> Config:
         },
         llm=LLMConfig(**raw['llm']),
         runner=RunnerConfig(**raw['runner']),
-        task=TaskConfig(
-            name=raw['task']['name'],
-            target=TargetPose(**raw['task']['target']),
-        ),
+        task=task,
     )

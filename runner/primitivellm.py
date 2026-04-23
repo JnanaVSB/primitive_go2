@@ -1,13 +1,15 @@
 """FORGE-style policy search loop for primitive_go2.
 
-Iteratively prompts an LLM to produce a Policy, executes it in MuJoCo,
+Iteratively prompts an LLM to produce Policy/Policies, executes in MuJoCo,
 scores by pose distance, and feeds the trial history back as context.
+
+Supports both single-task runs (sit, lay) and sequence runs (lay→stand, sit→stand).
 
 Artifacts per run:
     logs/<task>_<ISO-timestamp>/
         config.json       — exact config used
         trial_log.json    — trial history, updated after each iteration
-        run.log           — text log of the whole run
+        run.log           — structured log (LLM responses, rewards, errors)
         iter_XX.mp4       — video of each iteration
 """
 
@@ -33,7 +35,7 @@ from runner.recorder import RenderingEnv
 
 logger = logging.getLogger(__name__)
 
-# Fallback policy on parse failure — a no-op with a large penalty reward.
+# Fallback policy on parse failure — a no-op standing pose.
 _FALLBACK_POLICY = Policy(
     foot_targets=np.array([
         [ 0.1934, -0.27], [ 0.1934, -0.27],
@@ -46,18 +48,19 @@ _PARSE_FAIL_REWARD = -10.0
 
 
 def run(cfg: Config, resume_log_path: str | None = None) -> TrialLog:
-    """Execute the FORGE loop for one task."""
+    """Execute the FORGE loop."""
     run_dir = _setup_run_dir(cfg, resume_log_path)
     _attach_run_log_file(run_dir)
     trial_log = _load_or_create_log(resume_log_path)
 
-    msg_header = (
-        f"Run directory: {run_dir}\n"
-        f"Task: {cfg.task.name}, target: {asdict(cfg.task.target)}\n"
-        f"Starting from iteration {len(trial_log) + 1}/{cfg.runner.max_iterations}"
-    )
-    print(msg_header)
-    logger.info(msg_header)
+    steps = cfg.task.steps
+    num_steps = len(steps)
+    step_names = [s.name for s in steps]
+
+    logger.info(f"Run directory: {run_dir}")
+    logger.info(f"Task: {cfg.task.name}, steps: {step_names}")
+    logger.info(f"Starting from iteration {len(trial_log) + 1}/{cfg.runner.max_iterations}")
+    print(f"Task: {cfg.task.name} | Steps: {step_names} | Iterations: {cfg.runner.max_iterations}")
 
     prompt_builder = PromptBuilder(cfg.runner.templates_dir)
     llm = make_client(
@@ -72,7 +75,8 @@ def run(cfg: Config, resume_log_path: str | None = None) -> TrialLog:
 
     start_i = len(trial_log) + 1
     for i in range(start_i, cfg.runner.max_iterations + 1):
-        _log_iter(i, cfg.runner.max_iterations, "building prompt...")
+        print(f"[iter {i}/{cfg.runner.max_iterations}] prompting LLM...")
+
         prompt = prompt_builder.build(
             task=cfg.task.name,
             iter_idx=i,
@@ -80,34 +84,54 @@ def run(cfg: Config, resume_log_path: str | None = None) -> TrialLog:
             trial_history=trial_log.to_prompt_records(),
         )
 
-        policy, rationale = _generate_with_parse_retry(
-            llm, prompt, cfg.runner.max_parse_retries, i, cfg.llm.provider, cfg.llm.model,
+        policies, rationale = _generate_with_parse_retry(
+            llm, prompt, cfg.runner.max_parse_retries,
+            i, cfg.llm.provider, cfg.llm.model,
+            expected_count=num_steps,
         )
-        if policy is None:
-            trial_log.append(_FALLBACK_POLICY, _PARSE_FAIL_REWARD, rationale)
+        if policies is None:
+            fallback_policies = [_FALLBACK_POLICY] * num_steps
+            fallback_rewards = [_PARSE_FAIL_REWARD] * num_steps
+            trial_log.append(fallback_policies, fallback_rewards, rationale, step_names)
             trial_log.save(run_dir / "trial_log.json")
             continue
 
-        _log_policy(i, policy, rationale)
+        logger.info(f"[iter {i}] LLM rationale: {rationale}")
+        for idx, pol in enumerate(policies):
+            name = step_names[idx] if idx < len(step_names) else f"step_{idx+1}"
+            _log_policy(i, pol, name)
 
-        reward = _execute_and_record(cfg, policy, run_dir / f"iter_{i:02d}.mp4")
+        rewards = _execute_sequence_and_record(
+            cfg, policies, steps, run_dir / f"iter_{i:02d}.mp4",
+        )
 
-        trial_log.append(policy, reward, rationale)
+        trial_log.append(policies, rewards, rationale, step_names)
         trial_log.save(run_dir / "trial_log.json")
-        _log_iter(i, cfg.runner.max_iterations, f"reward = {reward:.4f}")
 
-        if reward >= cfg.runner.success_threshold:
-            msg = (f"Success at iteration {i} "
-                   f"(reward {reward:.4f} >= threshold {cfg.runner.success_threshold}).")
-            print(f"\n{msg}")
-            logger.info(msg)
+        # Print rewards
+        reward_parts = []
+        for idx, (name, rew) in enumerate(zip(step_names, rewards)):
+            passed = rew >= steps[idx].success_threshold
+            status = "PASS" if passed else ""
+            reward_parts.append(f"{name}={rew:.4f}{' '+status if passed else ''}")
+        print(f"[iter {i}/{cfg.runner.max_iterations}] {' | '.join(reward_parts)}")
+
+        logger.info(f"[iter {i}] rewards: {dict(zip(step_names, rewards))}")
+
+        # Check if all steps passed their thresholds
+        all_passed = all(
+            rew >= step.success_threshold
+            for rew, step in zip(rewards, steps)
+        )
+        if all_passed:
+            print(f"\nAll steps passed at iteration {i}!")
+            logger.info(f"All steps passed at iteration {i}")
             break
 
     best = trial_log.best
     if best:
-        msg = f"Best reward: {best.reward:.4f} at iteration {best.iteration}"
-        print(f"\n{msg}")
-        logger.info(msg)
+        print(f"\nBest total reward: {best.reward:.4f} at iteration {best.iteration}")
+        logger.info(f"Best total reward: {best.reward:.4f} at iteration {best.iteration}")
     return trial_log
 
 
@@ -118,47 +142,54 @@ def run(cfg: Config, resume_log_path: str | None = None) -> TrialLog:
 def _generate_with_parse_retry(
     llm, initial_prompt: str, max_parse_retries: int,
     iteration: int, provider: str, model: str,
-) -> tuple[Policy | None, str]:
+    expected_count: int = 1,
+) -> tuple[list[Policy] | None, str]:
     """Call the LLM and parse; retry on parse failure up to N times."""
     prompt = initial_prompt
     for attempt in range(1, max_parse_retries + 1):
-        _log_iter(
-            iteration, None,
-            f"calling LLM ({provider}/{model}, parse attempt {attempt}/{max_parse_retries})...",
-        )
+        print(f"[iter {iteration}] LLM call (attempt {attempt}/{max_parse_retries})...")
         try:
             response = llm.generate(prompt)
         except Exception as e:
-            msg = f"LLM call failed: {e}"
-            print(f"[iter {iteration}] {msg}")
-            logger.error(f"[iter {iteration}] {msg}")
+            logger.error(f"[iter {iteration}] LLM call failed: {e}")
             return None, f"LLM error: {e}"
 
+        logger.info(f"[iter {iteration}] LLM response (attempt {attempt}):\n{response}")
+
         try:
-            policy, rationale = parse_response(response)
-            return policy, rationale
+            policies, rationale = parse_response(response, expected_count=expected_count)
+            return policies, rationale
         except ParseError as e:
-            msg = f"parse failed on attempt {attempt}: {e}"
-            print(f"[iter {iteration}] {msg}")
-            logger.warning(f"[iter {iteration}] {msg}")
+            logger.warning(f"[iter {iteration}] parse failed (attempt {attempt}): {e}")
+            print(f"[iter {iteration}] parse failed: {e}")
             if attempt == max_parse_retries:
                 return None, (
                     f"parse failed after {max_parse_retries} attempts. "
                     f"Last error: {e}\n\nLast response:\n{response[:500]}"
                 )
+            policy_word = "Policy" if expected_count == 1 else f"list of {expected_count} Policy objects"
             prompt = (
                 initial_prompt
                 + f"\n\n# Retry needed\n"
                 + f"Your previous response did not parse. Error: {e}\n"
-                + "Make sure your response contains a fenced Python code block "
-                + "with a valid Policy(...) expression. Try again."
+                + f"Make sure your response contains a fenced Python code block "
+                + f"with a valid {policy_word}. Try again."
             )
     return None, "unreachable"
 
 
-def _execute_and_record(cfg: Config, policy: Policy, video_path: Path) -> float:
-    """Run one policy, record the video, return the reward."""
-    gains = cfg.stiffness_modes[policy.stiffness]
+def _execute_sequence_and_record(
+    cfg: Config,
+    policies: list[Policy],
+    steps: list,
+    video_path: Path,
+) -> list[float]:
+    """Execute a sequence of policies without resetting between them.
+
+    Returns a list of rewards, one per step.
+    """
+    # Use the first policy's stiffness for initial env setup
+    gains = cfg.stiffness_modes[policies[0].stiffness]
     base_env = Go2Env(
         xml_path=cfg.env.xml_path,
         control_substeps=cfg.env.control_substeps,
@@ -172,47 +203,43 @@ def _execute_and_record(cfg: Config, policy: Policy, video_path: Path) -> float:
     kin = Go2Kinematics(base_env.model)
     env = RenderingEnv(base_env)
 
+    rewards = []
     try:
-        base_state = execute_policy(
-            env, kin, policy, cfg.primitive.settle_steps_after,
-        )
-        reward = compute_pose_reward(base_state, asdict(cfg.task.target))
+        for idx, (policy, step) in enumerate(zip(policies, steps)):
+            # Update PD gains if stiffness changes between steps
+            if idx > 0:
+                new_gains = cfg.stiffness_modes[policy.stiffness]
+                env.kp = new_gains.kp
+                env.kd = new_gains.kd
+
+            base_state = execute_policy(
+                env, kin, policy, cfg.primitive.settle_steps_after,
+            )
+            reward = compute_pose_reward(base_state, asdict(step.target))
+            rewards.append(reward)
+
+            logger.info(
+                f"Step {idx+1} ({step.name}): "
+                f"h={base_state['h']:.4f} roll={base_state['roll']:.4f} "
+                f"pitch={base_state['pitch']:.4f} reward={reward:.4f}"
+            )
+
         env.save_video(video_path)
     finally:
         env.close()
 
-    return reward
+    return rewards
 
 
-def _log_iter(iteration: int, max_iters: int | None, message: str):
-    """Print and log an iteration-scoped status message."""
-    if max_iters is not None:
-        prefix = f"[iter {iteration}/{max_iters}]"
-    else:
-        prefix = f"[iter {iteration}]"
-    line = f"{prefix} {message}"
-    print(line)
-    logger.info(line)
-
-
-def _log_policy(iteration: int, policy: Policy, rationale: str):
-    """Print/log only policy parameters."""
+def _log_policy(iteration: int, policy: Policy, step_name: str):
+    """Log policy parameters to file only."""
     ft = policy.foot_targets
     leg_names = ['FR', 'FL', 'RR', 'RL']
 
-    lines = [f"[iter {iteration}] LLM proposed policy:"]
-
+    lines = [f"[iter {iteration}] {step_name} policy:"]
     for name, row in zip(leg_names, ft):
-        lines.append(
-            f"    {name}: foot_x={row[0]:+.4f}, foot_z={row[1]:+.4f}"
-        )
-
-    lines.append(
-        f"    duration={policy.duration}, stiffness={policy.stiffness}"
-    )
-
-    for line in lines:
-        print(line)
+        lines.append(f"    {name}: foot_x={row[0]:+.4f}, foot_z={row[1]:+.4f}")
+    lines.append(f"    duration={policy.duration}, stiffness={policy.stiffness}")
 
     logger.info("\n".join(lines))
 
@@ -235,16 +262,15 @@ def _setup_run_dir(cfg: Config, resume_log_path: str | None) -> Path:
 
 
 def _attach_run_log_file(run_dir: Path):
-    """Add a FileHandler so root logger also writes to run_dir/run.log."""
+    """Add a FileHandler for structured logging to run_dir/run.log."""
     log_path = run_dir / "run.log"
     handler = logging.FileHandler(log_path, mode='a')
     handler.setLevel(logging.INFO)
     handler.setFormatter(logging.Formatter(
         fmt="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
     ))
-    # Attach to the root logger so every module's logger writes here
     logging.getLogger().addHandler(handler)
-    logging.getLogger().info(f"--- Run log started. Output dir: {run_dir} ---")
+    logger.info(f"--- Run log started. Output dir: {run_dir} ---")
 
 
 def _load_or_create_log(resume_log_path: str | None) -> TrialLog:
@@ -254,14 +280,13 @@ def _load_or_create_log(resume_log_path: str | None) -> TrialLog:
     if not path.is_file():
         raise FileNotFoundError(f"Resume log not found: {path}")
     log = TrialLog.load(path)
-    msg = f"Resuming from {path} with {len(log)} existing entries"
-    print(msg)
-    logger.info(msg)
+    logger.info(f"Resuming from {path} with {len(log)} existing entries")
+    print(f"Resuming with {len(log)} existing entries")
     return log
 
 
 def _config_to_dict(cfg: Config) -> dict:
-    return {
+    d = {
         'env': asdict(cfg.env),
         'primitive': asdict(cfg.primitive),
         'stiffness_modes': {
@@ -269,8 +294,13 @@ def _config_to_dict(cfg: Config) -> dict:
         },
         'llm': asdict(cfg.llm),
         'runner': asdict(cfg.runner),
-        'task': {
-            'name': cfg.task.name,
-            'target': asdict(cfg.task.target),
-        },
+        'task': {'name': cfg.task.name},
     }
+    if cfg.task.is_sequence:
+        d['task']['sequence'] = [
+            {'name': s.name, 'target': asdict(s.target), 'success_threshold': s.success_threshold}
+            for s in cfg.task.sequence
+        ]
+    else:
+        d['task']['target'] = asdict(cfg.task.target)
+    return d

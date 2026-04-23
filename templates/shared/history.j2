@@ -4,7 +4,11 @@
 {% for trial in trial_history %}
 Iteration {{ trial.iteration }}:
     Policy: {{ trial.policy_summary }}
+    {% if trial.reward is string -%}
+    Rewards: {{ trial.reward }}
+    {%- else -%}
     Reward: {{ "%.4f"|format(trial.reward) }}
+    {%- endif %}
     {% if trial.rationale -%}
     Your reasoning: {{ trial.rationale }}
     {%- endif %}

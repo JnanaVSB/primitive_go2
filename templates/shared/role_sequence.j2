@@ -1,0 +1,11 @@
+You are generating control policies for a Unitree Go2 quadruped robot in simulation. Your goal is to produce a sequence of policies that makes the robot perform multiple poses in order, and to improve them across iterations using feedback from previous attempts.
+
+Each step has its own reward computed from the robot's body pose after executing that step's policy:
+
+    R = -(|h - h*| + |roll - roll*| + |pitch - pitch*|)
+
+where h is base height (meters), roll and pitch are base orientation (radians), and h*, roll*, pitch* are step-specific target values that you are not shown directly. R = 0 is a perfect match. R is always ≤ 0. Higher (closer to 0) is better.
+
+Important: the policies are executed in sequence **without resetting** the robot between steps. The second policy starts from wherever the first policy left the robot. You must account for this when designing both policies.
+
+You will propose all policies per iteration and receive separate rewards for each step.

@@ -1,0 +1,69 @@
+{% include 'shared/role_sequence.j2' %}
+
+{% include 'shared/api.j2' %}
+
+{% include 'shared/robot.j2' %}
+
+# Task: lay → stand
+
+This is a two-step task. The robot starts in its home standing pose. You must produce two policies that are executed in sequence **without resetting** between them:
+
+1. **Lay**: Make the robot lay down flat from standing.
+2. **Stand**: Make the robot stand back up from whatever lay pose it reached.
+
+Each step is scored separately. You will see both rewards in the history.
+
+## Step 1: Lay
+
+A quadruped lay is characterized by:
+- All four legs fold under the body, with feet pulled in toward the center.
+- The body is level (roll ≈ 0, pitch ≈ 0).
+- Base height is low, close to the physical minimum (~0.05 m).
+
+## Step 2: Stand
+
+A quadruped stand is characterized by:
+- All four legs extended downward, feet directly under the hips.
+- The body is level (roll ≈ 0, pitch ≈ 0).
+- Base height is at the home standing height (~0.27 m).
+
+# Strategy hints
+
+- For the lay step: pull all feet up (less-negative foot_z) to lower the body uniformly. Keep foot_x symmetric.
+- For the stand step: the robot starts from the lay position, not from home. Push feet down (more-negative foot_z) and move foot_x back toward the hip positions to extend the legs.
+- The stand policy must work from whatever pose the lay policy produces. If the lay is asymmetric, the stand needs to account for that.
+- Each step's reward is R = -(|Δh| + |Δroll| + |Δpitch|). Both must be close to 0.
+
+{% include 'shared/history.j2' %}
+
+# Output format
+
+Respond with a short explanation of your reasoning, followed by a fenced Python code block containing a **list of exactly two Policy objects** — first for lay, then for stand. Example:
+
+Reasoning about what to try based on the history and hints.
+```python
+[
+    Policy(
+        foot_targets=np.array([
+            [ 0.05, -0.05],
+            [ 0.05, -0.05],
+            [-0.05, -0.05],
+            [-0.05, -0.05],
+        ]),
+        duration=2.5,
+        stiffness='normal',
+    ),
+    Policy(
+        foot_targets=np.array([
+            [ 0.1934, -0.27],
+            [ 0.1934, -0.27],
+            [-0.1934, -0.27],
+            [-0.1934, -0.27],
+        ]),
+        duration=2.5,
+        stiffness='normal',
+    ),
+]
+```
+
+Now provide your two policies for iteration {{ iter_idx }} of {{ max_iters }}.

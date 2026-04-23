@@ -1,9 +1,10 @@
 """Parser for LLM policy output.
 
 The LLM returns a text response containing a fenced Python code block with
-a Policy(...) expression, plus natural-language reasoning around it.
+either a single Policy(...) expression or a list of Policy(...) expressions,
+plus natural-language reasoning around it.
 
-This module extracts both: the Policy object and the rationale string.
+This module extracts both: the Policy object(s) and the rationale string.
 """
 
 import re
@@ -19,39 +20,51 @@ class ParseError(Exception):
 _CODE_BLOCK_RE = re.compile(r"```(?:python)?\s*\n(.*?)\n```", re.DOTALL)
 
 
-def parse_response(text: str) -> tuple[Policy, str]:
-    """Extract a Policy and rationale from the LLM's text response.
+def parse_response(text: str, expected_count: int = 1) -> tuple[list[Policy], str]:
+    """Extract Policy/Policies and rationale from the LLM's text response.
 
     Args:
-        text: full LLM response including code block and prose.
+        text:           full LLM response including code block and prose.
+        expected_count: how many policies to expect (1 for single task,
+                        2+ for sequences). Used for validation.
 
     Returns:
-        (policy, rationale) — the Policy object and all non-code text as one string.
+        (policies, rationale) — list of Policy objects and all non-code text.
 
     Raises:
-        ParseError: no code block found, or code does not produce a valid Policy.
+        ParseError: no code block found, or code does not produce valid Policies,
+                    or wrong number of policies for a sequence.
     """
     if not isinstance(text, str) or not text.strip():
         raise ParseError("Empty LLM response")
 
     code = _extract_code_block(text)
-    rationale = _CODE_BLOCK_RE.sub("", text, count=1).strip()
-    policy = _exec_policy(code)
-    return policy, rationale
+    rationale = _CODE_BLOCK_RE.sub("", text).strip()
+    policies = _exec_policies(code)
+
+    if len(policies) != expected_count:
+        raise ParseError(
+            f"Expected {expected_count} policy/policies, got {len(policies)}."
+        )
+
+    return policies, rationale
 
 
 def _extract_code_block(text: str) -> str:
     matches = _CODE_BLOCK_RE.findall(text)
     if not matches:
         raise ParseError("No fenced code block found. Expected ```python ... ```.")
-    return matches[0].strip()
+    # Join all code blocks — sequence tasks might use separate blocks per policy
+    return "\n".join(m.strip() for m in matches)
 
 
-def _exec_policy(code: str) -> Policy:
-    """Execute the code in a restricted namespace and return the Policy.
+def _exec_policies(code: str) -> list[Policy]:
+    """Execute the code in a restricted namespace and return all Policies found.
 
-    The snippet can be a bare Policy(...) expression or statements that
-    create a Policy as a variable.
+    Handles:
+      - A bare Policy(...) expression → [Policy]
+      - A list [Policy(...), Policy(...)] → [Policy, Policy]
+      - Statements that assign Policy objects to variables → collected in order
     """
     safe_builtins = {
         "abs": abs, "round": round, "min": min, "max": max,
@@ -61,22 +74,28 @@ def _exec_policy(code: str) -> Policy:
     }
     namespace = {"__builtins__": safe_builtins, "Policy": Policy, "np": np}
 
+    # Try eval first (handles bare expressions)
     try:
         result = eval(code, namespace)
         if isinstance(result, Policy):
-            return result
+            return [result]
+        if isinstance(result, (list, tuple)):
+            policies = [x for x in result if isinstance(x, Policy)]
+            if policies:
+                return policies
     except SyntaxError:
         pass
     except Exception as e:
         raise ParseError(f"Error evaluating policy: {e}") from e
 
+    # Fall back to exec (handles statements and assignments)
     try:
         exec(code, namespace)
     except Exception as e:
         raise ParseError(f"Error executing policy code: {e}") from e
 
-    for value in namespace.values():
-        if isinstance(value, Policy):
-            return value
+    policies = [v for v in namespace.values() if isinstance(v, Policy)]
+    if policies:
+        return policies
 
-    raise ParseError("Code did not produce a Policy object.")
+    raise ParseError("Code did not produce any Policy objects.")

@@ -18,10 +18,12 @@ class TrialRecord:
 
     The template renders these into the history section. The runner builds
     them from the log of (policy, reward, rationale) tuples.
+
+    reward can be a float (single task) or a string (sequence, e.g. "lay: -0.02 | stand: -1.50").
     """
     iteration: int
     policy_summary: str
-    reward: float
+    reward: float | str
     rationale: str = ""
 
 
