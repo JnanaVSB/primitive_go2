@@ -69,17 +69,21 @@ def _extract_base_pose(env, kin: Go2Kinematics) -> dict:
 
     Height is world-frame z of the base. Roll and pitch are extracted from
     the base quaternion using standard ZYX Euler conventions.
-    Foot world z = body height + foot z in body frame, for each of the 4 feet.
+    Foot world z is read directly from MuJoCo's geom positions in world frame,
+    so it is correct regardless of body tilt.
     """
     h = float(env.data.qpos[2])
     quat_wxyz = env.data.qpos[3:7]  # MuJoCo convention: w, x, y, z
 
     roll, pitch = _quat_to_roll_pitch(quat_wxyz)
 
-    # Foot positions in body frame from current joint angles
-    joints = env.data.qpos[env._qpos_idx].copy()
-    foot_positions = kin.forward_kinematics(joints)  # shape (4, 2): (foot_x, foot_z)
-    foot_world_z = [float(h + foot_positions[i, 1]) for i in range(4)]
+    # Read foot z directly from MuJoCo in world frame
+    foot_names = ['FR', 'FL', 'RR', 'RL']
+    foot_world_z = []
+    for name in foot_names:
+        geom_id = mujoco.mj_name2id(env.model, mujoco.mjtObj.mjOBJ_GEOM, name)
+        z = float(env.data.geom_xpos[geom_id][2])  # world z
+        foot_world_z.append(z)
 
     return {
         'h': h,
