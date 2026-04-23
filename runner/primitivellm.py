@@ -25,7 +25,8 @@ from config import Config
 from env.env import Go2Env
 from env.reward import compute_pose_reward
 from world.kinematics import Go2Kinematics
-from world.primitive import execute_policy
+from world.primitive import execute_policy, extract_base_pose
+from world.trajectory import make_trajectory, trajectory_duration_to_nsteps
 from agent.policy import Policy
 from agent.prompt import PromptBuilder
 from agent.parser import parse_response, ParseError
@@ -56,6 +57,7 @@ def run(cfg: Config, resume_log_path: str | None = None) -> TrialLog:
     steps = cfg.task.steps
     num_steps = len(steps)
     step_names = [s.name for s in steps]
+    total_policy_count = sum(s.policy_count for s in steps)
 
     logger.info(f"Run directory: {run_dir}")
     logger.info(f"Task: {cfg.task.name}, steps: {step_names}")
@@ -87,10 +89,10 @@ def run(cfg: Config, resume_log_path: str | None = None) -> TrialLog:
         policies, rationale = _generate_with_parse_retry(
             llm, prompt, cfg.runner.max_parse_retries,
             i, cfg.llm.provider, cfg.llm.model,
-            expected_count=num_steps,
+            expected_count=total_policy_count,
         )
         if policies is None:
-            fallback_policies = [_FALLBACK_POLICY] * num_steps
+            fallback_policies = [_FALLBACK_POLICY] * total_policy_count
             fallback_rewards = [_PARSE_FAIL_REWARD] * num_steps
             trial_log.append(fallback_policies, fallback_rewards, rationale, step_names)
             trial_log.save(run_dir / "trial_log.json")
@@ -186,6 +188,11 @@ def _execute_sequence_and_record(
 ) -> list[float]:
     """Execute a sequence of policies without resetting between them.
 
+    Each step consumes step.policy_count policies from the list.
+    If step.loop_duration > 0, those policies are looped as a gait cycle
+    for that many seconds (no settling between cycle repetitions).
+    Otherwise the policies are executed once with settling after.
+
     Returns a list of rewards, one per step.
     """
     # Use the first policy's stiffness for initial env setup
@@ -204,24 +211,38 @@ def _execute_sequence_and_record(
     env = RenderingEnv(base_env)
 
     rewards = []
-    try:
-        for idx, (policy, step) in enumerate(zip(policies, steps)):
-            # Update PD gains if stiffness changes between steps
-            if idx > 0:
-                new_gains = cfg.stiffness_modes[policy.stiffness]
-                env.kp = new_gains.kp
-                env.kd = new_gains.kd
+    policy_idx = 0  # tracks which policies we've consumed
 
-            base_state = execute_policy(
-                env, kin, policy, cfg.primitive.settle_steps_after,
+    try:
+        for step in steps:
+            # Slice out this step's policies
+            step_policies = policies[policy_idx:policy_idx + step.policy_count]
+            policy_idx += step.policy_count
+
+            if step.loop_duration > 0:
+                # Gait mode: loop the cycle for loop_duration seconds
+                base_state = _execute_gait_loop(
+                    env, kin, step_policies, step.loop_duration,
+                    cfg.primitive.settle_steps_after,
+                )
+            else:
+                # Normal mode: execute policies once with settling
+                for pol in step_policies:
+                    base_state = execute_policy(
+                        env, kin, pol, cfg.primitive.settle_steps_after,
+                    )
+
+            reward = compute_pose_reward(
+                base_state, asdict(step.target),
+                distance_weight=step.distance_weight,
             )
-            reward = compute_pose_reward(base_state, asdict(step.target))
             rewards.append(reward)
 
             logger.info(
-                f"Step {idx+1} ({step.name}): "
-                f"h={base_state['h']:.4f} roll={base_state['roll']:.4f} "
-                f"pitch={base_state['pitch']:.4f} reward={reward:.4f}"
+                f"Step ({step.name}): "
+                f"x={base_state['x']:.4f} h={base_state['h']:.4f} "
+                f"roll={base_state['roll']:.4f} pitch={base_state['pitch']:.4f} "
+                f"reward={reward:.4f}"
             )
 
         env.save_video(video_path)
@@ -229,6 +250,51 @@ def _execute_sequence_and_record(
         env.close()
 
     return rewards
+
+
+def _execute_gait_loop(
+    env,
+    kin: Go2Kinematics,
+    cycle_policies: list[Policy],
+    loop_duration: float,
+    settle_steps_after: int,
+) -> dict:
+    """Execute a gait cycle repeatedly for loop_duration seconds.
+
+    Each policy in the cycle is executed as a trajectory without settling
+    between them. The cycle repeats until the total time exceeds loop_duration.
+    After the loop ends, the robot settles before measuring pose.
+
+    Returns the base state dict after settling.
+    """
+    dt_per_control_step = env.model.opt.timestep * env.control_substeps
+    elapsed = 0.0
+
+    while elapsed < loop_duration:
+        for policy in cycle_policies:
+            if elapsed >= loop_duration:
+                break
+
+            # IK and trajectory for this gait phase
+            start_joints = env.data.qpos[env._qpos_idx].copy()
+            target_joints = kin.policy_to_joints(policy.foot_targets)
+            traj = make_trajectory(start_joints, target_joints, policy.duration)
+            n_steps = trajectory_duration_to_nsteps(policy.duration, dt_per_control_step)
+
+            for step in range(n_steps):
+                if elapsed >= loop_duration:
+                    break
+                t = step * dt_per_control_step
+                action = traj(t)
+                env.step(action)
+                elapsed += dt_per_control_step
+
+    # Settle at the end before measuring
+    final_joints = env.data.qpos[env._qpos_idx].copy()
+    for _ in range(settle_steps_after):
+        env.step(final_joints)
+
+    return extract_base_pose(env, kin)
 
 
 def _log_policy(iteration: int, policy: Policy, step_name: str):

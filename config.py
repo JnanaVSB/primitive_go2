@@ -66,10 +66,18 @@ class TargetPose:
 
 @dataclass
 class TaskStep:
-    """One step in a task sequence (e.g. lay, then stand)."""
+    """One step in a task sequence (e.g. lay, then stand).
+
+    For gait/walk steps, policy_count > 1 means the LLM outputs multiple
+    policies forming one cycle, and loop_duration > 0 means that cycle
+    is repeated for that many seconds.
+    """
     name: str
     target: TargetPose
     success_threshold: float = -0.05
+    distance_weight: float = 0.0
+    policy_count: int = 1
+    loop_duration: float = 0.0
 
 
 @dataclass
@@ -123,6 +131,9 @@ def load_config(path: str | Path) -> Config:
                 name=step['name'],
                 target=TargetPose(**step['target']),
                 success_threshold=step.get('success_threshold', -0.05),
+                distance_weight=step.get('distance_weight', 0.0),
+                policy_count=step.get('policy_count', 1),
+                loop_duration=step.get('loop_duration', 0.0),
             )
             for step in task_raw['sequence']
         ]

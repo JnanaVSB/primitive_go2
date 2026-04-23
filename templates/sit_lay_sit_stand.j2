@@ -1,0 +1,105 @@
+{% include 'shared/role_sequence.j2' %}
+
+{% include 'shared/api.j2' %}
+
+{% include 'shared/robot.j2' %}
+
+# Task: sit → lay → sit → stand
+
+This is a four-step task. The robot starts in its home standing pose. You must produce four policies that are executed in sequence **without resetting** between them:
+
+1. **Sit**: From standing, make the robot sit down.
+2. **Lay**: From the sit pose, make the robot lay down flat.
+3. **Sit**: From the lay pose, make the robot sit back up.
+4. **Stand**: From the sit pose, make the robot stand back up.
+
+Each step is scored separately. You will see all four rewards in the history.
+
+## Step 1: Sit (from stand)
+
+- Rear legs fold under the body, rear feet pulled forward and up.
+- Front legs remain extended, supporting the shoulders.
+- Body tilts back (negative pitch), rear lower than front.
+
+## Step 2: Lay (from sit)
+
+- All four legs fold under the body, feet pulled in toward the center.
+- Body is level (roll ≈ 0, pitch ≈ 0).
+- Base height is low, close to the physical minimum (~0.05 m).
+
+## Step 3: Sit (from lay)
+
+- Same target as step 1 — rear legs folded, front legs extended, body tilted back.
+- The challenge is getting from lay (flat on ground) back up to sit.
+
+## Step 4: Stand (from sit)
+
+- All four legs extended downward, feet directly under the hips.
+- Body is level (roll ≈ 0, pitch ≈ 0).
+- Base height is at the home standing height (~0.27 m).
+
+# Strategy hints
+
+- Each policy starts from wherever the previous one left the robot. Plan the whole sequence together.
+- Symmetry: left and right legs should have identical targets unless you have a reason otherwise.
+- The transitions down (stand→sit, sit→lay) are generally easier than the transitions up (lay→sit, sit→stand).
+- For upward transitions, use slightly longer durations to give the robot time to lift itself smoothly.
+- Each step's reward is R = -(|Δh| + |Δroll| + |Δpitch|). All four must be close to 0.
+
+{% include 'shared/history.j2' %}
+
+# Output format
+
+Respond with a short explanation of your reasoning, followed by a fenced Python code block containing a **list of exactly four Policy objects** in order: sit, lay, sit, stand. Example:
+
+Reasoning about what to try based on the history and hints.
+```python
+[
+    # Step 1: sit (from stand)
+    Policy(
+        foot_targets=np.array([
+            [ 0.1934, -0.27],
+            [ 0.1934, -0.27],
+            [-0.12,   -0.05],
+            [-0.12,   -0.05],
+        ]),
+        duration=2.5,
+        stiffness='normal',
+    ),
+    # Step 2: lay (from sit)
+    Policy(
+        foot_targets=np.array([
+            [ 0.05, -0.05],
+            [ 0.05, -0.05],
+            [-0.05, -0.05],
+            [-0.05, -0.05],
+        ]),
+        duration=2.5,
+        stiffness='normal',
+    ),
+    # Step 3: sit (from lay)
+    Policy(
+        foot_targets=np.array([
+            [ 0.1934, -0.27],
+            [ 0.1934, -0.27],
+            [-0.12,   -0.05],
+            [-0.12,   -0.05],
+        ]),
+        duration=3.0,
+        stiffness='normal',
+    ),
+    # Step 4: stand (from sit)
+    Policy(
+        foot_targets=np.array([
+            [ 0.1934, -0.27],
+            [ 0.1934, -0.27],
+            [-0.1934, -0.27],
+            [-0.1934, -0.27],
+        ]),
+        duration=3.0,
+        stiffness='normal',
+    ),
+]
+```
+
+Now provide your four policies for iteration {{ iter_idx }} of {{ max_iters }}.

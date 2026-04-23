@@ -8,7 +8,6 @@ PD gains for this policy's stiffness mode (handled by the runner).
 """
 
 import numpy as np
-import mujoco
 
 from agent.policy import Policy
 from world.kinematics import Go2Kinematics
@@ -34,7 +33,7 @@ def execute_policy(
                             target before measuring base state
 
     Returns:
-        dict {'h': float, 'roll': float, 'pitch': float} — base pose after settle.
+        dict with 'x', 'h', 'roll', 'pitch'.
     """
     # 1. Current joint angles (starting point of trajectory)
     start_joints = env.data.qpos[env._qpos_idx].copy()
@@ -60,21 +59,29 @@ def execute_policy(
     for _ in range(settle_steps_after):
         env.step(final_target)
 
-    # 7. Read base state
-    return _extract_base_pose(env)
+    # 7. Read base state and foot positions
+    return extract_base_pose(env, kin)
 
 
-def _extract_base_pose(env) -> dict:
-    """Read base height, roll, pitch from env's MuJoCo data.
+def extract_base_pose(env, kin: Go2Kinematics) -> dict:
+    """Read base x position, height, roll, pitch from env's MuJoCo data.
 
+    x is world-frame x of the base (for distance tracking).
     Height is world-frame z of the base. Roll and pitch are extracted from
     the base quaternion using standard ZYX Euler conventions.
     """
+    x = float(env.data.qpos[0])
     h = float(env.data.qpos[2])
     quat_wxyz = env.data.qpos[3:7]  # MuJoCo convention: w, x, y, z
 
     roll, pitch = _quat_to_roll_pitch(quat_wxyz)
-    return {'h': h, 'roll': float(roll), 'pitch': float(pitch)}
+
+    return {
+        'x': x,
+        'h': h,
+        'roll': float(roll),
+        'pitch': float(pitch),
+    }
 
 
 def _quat_to_roll_pitch(quat_wxyz: np.ndarray) -> tuple[float, float]:
