@@ -1,19 +1,13 @@
 # Policy API
 
-You produce a Policy object with three fields:
+You produce a Policy object with one field:
 
     Policy(
         foot_targets=np.array([[foot_x, foot_z]] * 4),  # shape (4, 2)
-        duration=<float, seconds>,
-        stiffness=<'soft' | 'normal' | 'stiff'>,
     )
 
 Fields:
 
 - foot_targets: a (4, 2) numpy array giving (foot_x, foot_z) for each of the four feet in the robot's body frame, in meters. Row order is FR (front-right), FL (front-left), RR (rear-right), RL (rear-left). foot_x is forward (+) / backward (-) relative to body center. foot_z is up (+) / down (-) relative to body center. Feet are always below the body, so foot_z is always negative.
-
-- duration: how long the motion takes, in seconds. Typical range 1.0 to 3.0. Too short causes jerky motion; too long wastes time.
-
-- stiffness: the PD controller gain mode. 'soft' gives gentle, compliant tracking. 'normal' is balanced. 'stiff' gives aggressive tracking but risks instability. Default to 'normal' unless you have reason to change it.
 
 The foot_y coordinate is fixed by the robot's morphology (each foot stays directly below its hip laterally). You do not control it.

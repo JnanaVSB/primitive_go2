@@ -22,12 +22,13 @@ class Policy:
     Attributes:
         foot_targets: shape (4, 2). Row order matches LEG_NAMES (FR, FL, RR, RL).
                       Each row is (foot_x, foot_z) in base_link frame, meters.
-        duration:     motion duration in seconds. Must be > 0.
+        duration:     motion duration in seconds. Fixed at 5.0 by default.
+                      The LLM does not control this parameter.
         stiffness:    controller stiffness mode: 'soft' | 'normal' | 'stiff'.
                       Resolves to (kp, kd) via config lookup at env construction.
     """
     foot_targets: np.ndarray
-    duration: float
+    duration: float = 5.0
     stiffness: Stiffness = 'normal'
 
     def __post_init__(self):

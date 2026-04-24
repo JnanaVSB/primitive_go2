@@ -152,4 +152,4 @@ def _summarize_policy(policy: Policy) -> str:
     for leg, row in zip(['FR', 'FL', 'RR', 'RL'], ft):
         parts.append(f"{leg}=({row[0]:+.3f},{row[1]:+.3f})")
     feet_str = ' '.join(parts)
-    return f"{feet_str}  dur={policy.duration}  stiff={policy.stiffness}"
+    return f"{feet_str}"

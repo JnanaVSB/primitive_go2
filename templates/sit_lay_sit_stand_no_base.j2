@@ -43,7 +43,6 @@ Each step is scored separately. You will see all four rewards in the history.
 - Each policy starts from wherever the previous one left the robot. Plan the whole sequence together.
 - Symmetry: left and right legs should have identical targets unless you have a reason otherwise.
 - The transitions down (stand→sit, sit→lay) are generally easier than the transitions up (lay→sit, sit→stand).
-- For upward transitions, use slightly longer durations to give the robot time to lift itself smoothly.
 - Each step's reward is R = -(|Δh| + |Δroll| + |Δpitch|). All four must be close to 0.
 
 {% include 'shared/history.j2' %}
@@ -63,8 +62,6 @@ Reasoning about what to try based on the history and hints.
             [-0.10, -0.05],
             [-0.10, -0.05],
         ]),
-        duration=2.5,
-        stiffness='normal',
     ),
     # Step 2: lay (from sit)
     Policy(
@@ -74,8 +71,6 @@ Reasoning about what to try based on the history and hints.
             [-0.05, -0.05],
             [-0.05, -0.05],
         ]),
-        duration=2.5,
-        stiffness='normal',
     ),
     # Step 3: sit (from lay)
     Policy(
@@ -85,8 +80,6 @@ Reasoning about what to try based on the history and hints.
             [-0.10, -0.05],
             [-0.10, -0.05],
         ]),
-        duration=3.0,
-        stiffness='normal',
     ),
     # Step 4: stand (from sit)
     Policy(
@@ -96,8 +89,6 @@ Reasoning about what to try based on the history and hints.
             [-0.15, -0.30],
             [-0.15, -0.30],
         ]),
-        duration=3.0,
-        stiffness='normal',
     ),
 ]
 ```

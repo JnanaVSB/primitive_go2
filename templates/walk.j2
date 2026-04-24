@@ -42,8 +42,6 @@ Total reward = R_pose + R_dist. The robot needs to walk forward while staying st
 
 # Strategy hints
 
-- Each phase duration should be short (0.1–0.3 seconds) for smooth motion.
-- Use the same stiffness for all 8 phases.
 - foot_z should alternate between planted (more negative, leg extended down) and lifted (less negative, leg tucked up) across phases.
 - foot_x should shift backward during stance and forward during swing.
 - Keep changes between consecutive phases small — smooth transitions prevent stumbling.
@@ -66,8 +64,6 @@ Reasoning about the gait pattern and what to adjust based on history.
             [-0.18, -0.20],   # RL lifting
             [-0.20, -0.27],   # RR planted
         ]),
-        duration=0.2,
-        stiffness='normal',
     ),
     # Phase 2: FR+RL swinging forward
     Policy(
@@ -77,22 +73,20 @@ Reasoning about the gait pattern and what to adjust based on history.
             [-0.14, -0.20],   # RL swinging forward
             [-0.18, -0.27],   # RR pushing back
         ]),
-        duration=0.2,
-        stiffness='normal',
     ),
     # ... 6 more phases completing the cycle
     # Phase 3
-    Policy(foot_targets=np.array([[ 0.16,-0.27],[ 0.24,-0.22],[-0.12,-0.22],[-0.16,-0.27]]), duration=0.2, stiffness='normal'),
+    Policy(foot_targets=np.array([[ 0.16,-0.27],[ 0.24,-0.22],[-0.12,-0.22],[-0.16,-0.27]])),
     # Phase 4
-    Policy(foot_targets=np.array([[ 0.15,-0.27],[ 0.24,-0.27],[-0.12,-0.27],[-0.15,-0.27]]), duration=0.2, stiffness='normal'),
+    Policy(foot_targets=np.array([[ 0.15,-0.27],[ 0.24,-0.27],[-0.12,-0.27],[-0.15,-0.27]])),
     # Phase 5
-    Policy(foot_targets=np.array([[ 0.18,-0.20],[ 0.22,-0.27],[-0.14,-0.27],[-0.18,-0.20]]), duration=0.2, stiffness='normal'),
+    Policy(foot_targets=np.array([[ 0.18,-0.20],[ 0.22,-0.27],[-0.14,-0.27],[-0.18,-0.20]])),
     # Phase 6
-    Policy(foot_targets=np.array([[ 0.22,-0.20],[ 0.20,-0.27],[-0.16,-0.27],[-0.14,-0.20]]), duration=0.2, stiffness='normal'),
+    Policy(foot_targets=np.array([[ 0.22,-0.20],[ 0.20,-0.27],[-0.16,-0.27],[-0.14,-0.20]])),
     # Phase 7
-    Policy(foot_targets=np.array([[ 0.24,-0.22],[ 0.18,-0.27],[-0.18,-0.27],[-0.12,-0.22]]), duration=0.2, stiffness='normal'),
+    Policy(foot_targets=np.array([[ 0.24,-0.22],[ 0.18,-0.27],[-0.18,-0.27],[-0.12,-0.22]])),
     # Phase 8
-    Policy(foot_targets=np.array([[ 0.24,-0.27],[ 0.16,-0.27],[-0.20,-0.27],[-0.12,-0.27]]), duration=0.2, stiffness='normal'),
+    Policy(foot_targets=np.array([[ 0.24,-0.27],[ 0.16,-0.27],[-0.20,-0.27],[-0.12,-0.27]])),
 ]
 ```
 

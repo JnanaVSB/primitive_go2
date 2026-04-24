@@ -118,7 +118,7 @@ def run(cfg: Config, resume_log_path: str | None = None) -> TrialLog:
             reward_parts.append(f"{name}={rew:.4f}{' '+status if passed else ''}")
         print(f"[iter {i}/{cfg.runner.max_iterations}] {' | '.join(reward_parts)}")
 
-        logger.info(f"[iter {i}] rewards: {dict(zip(step_names, rewards))}")
+        logger.info(f"[iter {i}] rewards: {list(zip(step_names, rewards))}")
 
         # Check if all steps passed their thresholds
         all_passed = all(
@@ -305,7 +305,6 @@ def _log_policy(iteration: int, policy: Policy, step_name: str):
     lines = [f"[iter {iteration}] {step_name} policy:"]
     for name, row in zip(leg_names, ft):
         lines.append(f"    {name}: foot_x={row[0]:+.4f}, foot_z={row[1]:+.4f}")
-    lines.append(f"    duration={policy.duration}, stiffness={policy.stiffness}")
 
     logger.info("\n".join(lines))
 
