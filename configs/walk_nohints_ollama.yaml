@@ -24,21 +24,21 @@ llm:
 
 runner:
   max_iterations: 30
-  success_threshold: -0.50
+  success_threshold: 3
   max_parse_retries: 3
   templates_dir: templates
   log_dir: logs
 
 task:
-  name: walk
+  name: walk_nohints
   sequence:
     - name: walk
       target:
-        h: 0.32
+        h: 0.27
         roll: 0.0
         pitch: 0.0
-      distance_weight: 0.01
-      success_threshold: 2
+      distance_weight: 0.05
+      success_threshold: 3
       policy_count: 4
       loop_duration: 10.0
       phase_duration: 0.5

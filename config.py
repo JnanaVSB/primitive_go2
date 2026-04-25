@@ -78,6 +78,7 @@ class TaskStep:
     distance_weight: float = 0.0
     policy_count: int = 1
     loop_duration: float = 0.0
+    phase_duration: float = 5.0
 
 
 @dataclass
@@ -134,6 +135,7 @@ def load_config(path: str | Path) -> Config:
                 distance_weight=step.get('distance_weight', 0.0),
                 policy_count=step.get('policy_count', 1),
                 loop_duration=step.get('loop_duration', 0.0),
+                phase_duration=step.get('phase_duration', 5.0),
             )
             for step in task_raw['sequence']
         ]

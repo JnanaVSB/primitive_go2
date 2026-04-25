@@ -219,6 +219,10 @@ def _execute_sequence_and_record(
             step_policies = policies[policy_idx:policy_idx + step.policy_count]
             policy_idx += step.policy_count
 
+            # Override duration from config
+            for pol in step_policies:
+                pol.duration = step.phase_duration
+
             if step.loop_duration > 0:
                 # Gait mode: loop the cycle for loop_duration seconds
                 base_state = _execute_gait_loop(

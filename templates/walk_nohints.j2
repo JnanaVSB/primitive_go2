@@ -1,0 +1,35 @@
+{% include 'shared/role_sequence.j2' %}
+
+{% include 'shared/api.j2' %}
+
+{% include 'shared/robot.j2' %}
+
+# Task: walk
+
+Make the robot walk forward. You must produce exactly **4 Policy objects** that define one complete gait cycle. This cycle will be **looped automatically** for several seconds.
+
+## Reward
+
+- **Pose**: R_pose = -(|Δh| + |Δroll| + |Δpitch|). Stay upright and level.
+- **Distance**: R_dist = distance_weight × forward_distance. Move in the +x direction.
+
+Total reward = R_pose + R_dist. Higher is better.
+
+{% include 'shared/history.j2' %}
+
+# Output format
+
+Respond with a short explanation, followed by a fenced Python code block containing a **list of exactly 4 Policy objects**.
+
+```python
+[
+    Policy(foot_targets=np.array([[ 0.19, -0.27],[ 0.19, -0.27],[-0.19, -0.27],[-0.19, -0.27]])),
+    Policy(foot_targets=np.array([[ 0.19, -0.27],[ 0.19, -0.27],[-0.19, -0.27],[-0.19, -0.27]])),
+    Policy(foot_targets=np.array([[ 0.19, -0.27],[ 0.19, -0.27],[-0.19, -0.27],[-0.19, -0.27]])),
+    Policy(foot_targets=np.array([[ 0.19, -0.27],[ 0.19, -0.27],[-0.19, -0.27],[-0.19, -0.27]])),
+]
+```
+
+Row order: FR, FL, RR, RL.
+
+Now provide your 4 policies for iteration {{ iter_idx }} of {{ max_iters }}.

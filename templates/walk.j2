@@ -6,88 +6,60 @@
 
 # Task: walk
 
-Make the robot walk forward. You must produce exactly **8 Policy objects** that define one complete gait cycle. This cycle will be **looped automatically** for several seconds — you do not need to repeat the cycle yourself.
+Make the robot walk forward. You must produce exactly **4 Policy objects** that define one complete gait cycle. This cycle will be **looped automatically** for several seconds — you do not need to repeat the cycle yourself.
 
-## What is a gait cycle?
+## How the gait works
 
-A quadruped walks by moving its legs in a repeating pattern. Each of your 8 policies is one phase of that pattern. Think of it like 8 snapshots of the legs during one full stride. When looped, these 8 phases play over and over, creating continuous forward movement.
+A quadruped trots by moving **diagonal leg pairs** in alternation:
+- **Pair A** = front-left (FL) + rear-right (RR)
+- **Pair B** = front-right (FR) + rear-left (RL)
 
-## Key principles
+Your 4 policies represent these phases:
+1. Pair A swings forward (lifted and moving ahead), Pair B pushes backward (planted on ground)
+2. Pair A plants down in its new forward position, Pair B finishes pushing
+3. Pair B swings forward (lifted and moving ahead), Pair A pushes backward (planted on ground)
+4. Pair B plants down in its new forward position, Pair A finishes pushing
 
-- **Weight shifting**: Before lifting a leg, the robot must shift its weight to the other legs. A leg carrying weight cannot swing forward.
-- **Diagonal pairs**: Quadrupeds typically move diagonal legs together (front-left with rear-right, front-right with rear-left). This is called a trot gait and is the most stable.
-- **Small steps**: Each phase should make small changes from the previous one. Large jumps between phases will make the robot stumble.
-- **Forward bias**: To walk forward, the feet should push backward during stance (contact with ground) and swing forward during swing phase.
-- **Keep it stable**: The body should stay level (roll ≈ 0, pitch ≈ 0) and at standing height (h ≈ 0.27 m) throughout.
+After phase 4, the cycle repeats from phase 1.
 
-## Gait structure suggestion
+## Key rules
 
-A trot gait cycle with 8 phases might look like:
-1. Both diagonal pair A (FL+RR) planted, pair B (FR+RL) starting to lift
-2. Pair B swinging forward, pair A pushing back
-3. Pair B reaching forward, pair A still pushing
-4. Pair B planting down, pair A finishing push
-5. Both diagonal pair B (FR+RL) planted, pair A (FL+RR) starting to lift
-6. Pair A swinging forward, pair B pushing back
-7. Pair A reaching forward, pair B still pushing
-8. Pair A planting down, pair B finishing push
+- **Planted legs** have foot_z near -0.27 (fully extended to ground). They push the robot forward by having foot_x shift backward.
+- **Swinging legs** have foot_z around -0.15 to -0.20 (lifted off ground). They move foot_x forward to prepare for the next step.
+- **Keep it symmetric**: what pair A does in phases 1-2, pair B should mirror in phases 3-4.
+- **Small steps**: foot_x changes between phases should be small (0.02 to 0.05 m). Large steps cause stumbling.
+- **Stay level**: the body must stay upright throughout. If the robot tips, the pose reward penalizes it.
+- **Row order in foot_targets is: FR, FL, RR, RL.** FR and RL are pair B. FL and RR are pair A.
 
 ## Reward
 
-The reward has two parts:
-- **Pose**: R_pose = -(|Δh| + |Δroll| + |Δpitch|). The robot should stay upright and level.
-- **Distance**: R_dist = distance_weight × forward_distance. The further the robot walks in the +x direction, the better.
+- **Pose**: R_pose = -(|Δh| + |Δroll| + |Δpitch|). Stay upright and level at h ≈ 0.27 m.
+- **Distance**: R_dist = distance_weight × forward_distance. Walk in the +x direction.
 
-Total reward = R_pose + R_dist. The robot needs to walk forward while staying stable.
-
-# Strategy hints
-
-- foot_z should alternate between planted (more negative, leg extended down) and lifted (less negative, leg tucked up) across phases.
-- foot_x should shift backward during stance and forward during swing.
-- Keep changes between consecutive phases small — smooth transitions prevent stumbling.
-- Left and right legs in the same diagonal pair should have mirrored foot_x values.
+Total reward = R_pose + R_dist.
 
 {% include 'shared/history.j2' %}
 
 # Output format
 
-Respond with a short explanation of your reasoning, followed by a fenced Python code block containing a **list of exactly 8 Policy objects** representing one gait cycle. Example:
+Respond with a short explanation, followed by a fenced Python code block containing a **list of exactly 4 Policy objects**.
 
-Reasoning about the gait pattern and what to adjust based on history.
 ```python
 [
-    # Phase 1: FL+RR planted, FR+RL starting lift
+    # Phase 1: Pair A (FL+RR) swings forward, Pair B (FR+RL) planted pushing back
     Policy(
         foot_targets=np.array([
-            [ 0.20, -0.27],   # FL planted
-            [ 0.18, -0.20],   # FR lifting
-            [-0.18, -0.20],   # RL lifting
-            [-0.20, -0.27],   # RR planted
+            [ 0.18, -0.27],   # FR — planted, pushing back
+            [ 0.22, -0.18],   # FL — lifted, swinging forward
+            [-0.22, -0.27],   # RR — planted (pair A rear), pushing back... wait
         ]),
     ),
-    # Phase 2: FR+RL swinging forward
-    Policy(
-        foot_targets=np.array([
-            [ 0.18, -0.27],   # FL pushing back
-            [ 0.22, -0.20],   # FR swinging forward
-            [-0.14, -0.20],   # RL swinging forward
-            [-0.18, -0.27],   # RR pushing back
-        ]),
-    ),
-    # ... 6 more phases completing the cycle
-    # Phase 3
-    Policy(foot_targets=np.array([[ 0.16,-0.27],[ 0.24,-0.22],[-0.12,-0.22],[-0.16,-0.27]])),
-    # Phase 4
-    Policy(foot_targets=np.array([[ 0.15,-0.27],[ 0.24,-0.27],[-0.12,-0.27],[-0.15,-0.27]])),
-    # Phase 5
-    Policy(foot_targets=np.array([[ 0.18,-0.20],[ 0.22,-0.27],[-0.14,-0.27],[-0.18,-0.20]])),
-    # Phase 6
-    Policy(foot_targets=np.array([[ 0.22,-0.20],[ 0.20,-0.27],[-0.16,-0.27],[-0.14,-0.20]])),
-    # Phase 7
-    Policy(foot_targets=np.array([[ 0.24,-0.22],[ 0.18,-0.27],[-0.18,-0.27],[-0.12,-0.22]])),
-    # Phase 8
-    Policy(foot_targets=np.array([[ 0.24,-0.27],[ 0.16,-0.27],[-0.20,-0.27],[-0.12,-0.27]])),
+    # ...
 ]
 ```
 
-Now provide your 8 gait cycle policies for iteration {{ iter_idx }} of {{ max_iters }}.
+Note: think carefully about which legs are in which pair:
+- Pair A = FL (row 1) + RR (row 2)
+- Pair B = FR (row 0) + RL (row 3)
+
+Now provide your 4 gait cycle policies for iteration {{ iter_idx }} of {{ max_iters }}.
