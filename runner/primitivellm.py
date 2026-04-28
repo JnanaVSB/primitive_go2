@@ -43,16 +43,14 @@ def run(cfg: Config, resume_log_path: str | None = None) -> TrialLog:
     _attach_run_log_file(run_dir)
     trial_log = _load_or_create_log(resume_log_path)
 
-    task_description = cfg.task.description
     target = asdict(cfg.task.target) if cfg.task.target else {}
     distance_weight = getattr(cfg.task, 'distance_weight', 0.0)
     success_threshold = cfg.runner.success_threshold
 
     logger.info(f"Run directory: {run_dir}")
-    logger.info(f"Task: {cfg.task.name} — {task_description}")
+    logger.info(f"Task: {cfg.task.name}")
     logger.info(f"Starting from iteration {len(trial_log) + 1}/{cfg.runner.max_iterations}")
     print(f"Task: {cfg.task.name} | Iterations: {cfg.runner.max_iterations}")
-    print(f"Description: {task_description}")
 
     prompt_builder = PromptBuilder(cfg.runner.templates_dir)
     llm = make_client(
@@ -71,11 +69,10 @@ def run(cfg: Config, resume_log_path: str | None = None) -> TrialLog:
 
         # Build prompt
         prompt = prompt_builder.build(
-            task="code_policy",
+            task=cfg.task.name,
             iter_idx=i,
             max_iters=cfg.runner.max_iterations,
             trial_history=trial_log.to_prompt_records(),
-            task_description=task_description,
             distance_weight=distance_weight,
         )
 
@@ -114,11 +111,9 @@ def run(cfg: Config, resume_log_path: str | None = None) -> TrialLog:
         print(f"[iter {i}/{cfg.runner.max_iterations}] reward={reward:.4f}{status}")
         logger.info(f"[iter {i}] reward={reward:.4f}")
 
-
         if passed:
             print(f"\nTask passed at iteration {i}!")
             logger.info(f"Task passed at iteration {i}")
-
             break
 
     best = trial_log.best
@@ -215,8 +210,6 @@ def _execute_and_reward(
     try:
         result = execute_policy_code(code, robot)
 
-
-
         state = robot.get_state()
         reward = compute_pose_reward(state, target, distance_weight=distance_weight)
 
@@ -235,10 +228,6 @@ def _execute_and_reward(
 
     finally:
         env.close()
-
-
-
-
 
 
 def _setup_run_dir(cfg: Config, resume_log_path: str | None) -> Path:

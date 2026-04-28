@@ -1,0 +1,87 @@
+{% include 'shared/role_sequence.j2' %}
+
+{% include 'shared/api.j2' %}
+
+{% include 'shared/robot.j2' %}
+
+# Task: walk forward
+
+Make the robot walk **forward** (in the +x direction). You must produce exactly **4 Policy objects** that define one complete trot gait cycle. This cycle will be **looped automatically** for several seconds.
+
+## How forward walking works
+
+A quadruped walks forward using a trot gait with **diagonal leg pairs**:
+- **Pair A** = front-left (FL, row 1) + rear-right (RR, row 2)
+- **Pair B** = front-right (FR, row 0) + rear-left (RL, row 3)
+
+### The push-swing cycle
+
+To move the body **forward**, planted legs must push **backward** relative to the body:
+- A **planted** leg has foot on the ground (foot_z ≈ -0.27) and its foot_x is **behind** the neutral position. As the body moves forward over the planted foot, the foot effectively pushes the body ahead.
+- A **swinging** leg is lifted (foot_z ≈ -0.15 to -0.18) and moves its foot_x **ahead** of neutral to prepare for the next plant.
+
+### Phase breakdown
+
+Neutral foot_x positions: front legs ≈ +0.1934, rear legs ≈ -0.1934.
+
+1. **Phase 1** — Pair A swings, Pair B planted:
+   - FL (row 1): foot_x > +0.1934 (forward of neutral), foot_z lifted
+   - RR (row 2): foot_x < -0.1934 (forward of neutral for rear = more negative), foot_z lifted
+   - FR (row 0): foot_x < +0.1934 (behind neutral), foot_z = -0.27
+   - RL (row 3): foot_x > -0.1934 (behind neutral for rear = less negative), foot_z = -0.27
+
+2. **Phase 2** — Transition: all feet planted at their current positions (foot_z = -0.27)
+
+3. **Phase 3** — Pair B swings, Pair A planted:
+   - FR (row 0): foot_x > +0.1934 (forward of neutral), foot_z lifted
+   - RL (row 3): foot_x < -0.1934 (forward of neutral for rear), foot_z lifted
+   - FL (row 1): foot_x < +0.1934 (behind neutral), foot_z = -0.27
+   - RR (row 2): foot_x > -0.1934 (behind neutral for rear), foot_z = -0.27
+
+4. **Phase 4** — Transition: all feet planted at their current positions (foot_z = -0.27)
+
+### Critical constraints
+
+- **Small steps**: offset from neutral should be 0.02 to 0.04 m. Larger causes stumbling.
+- **Sufficient lift**: swinging foot_z should be -0.15 to -0.18. Too close to -0.27 drags on ground.
+- **Symmetry**: what Pair A does in phases 1-2, Pair B mirrors in phases 3-4.
+- **Stay level**: minimize roll and pitch. Asymmetric steps cause tipping.
+
+## Reward
+
+- **Pose**: R_pose = -(|Δh| + |Δroll| + |Δpitch|). Stay upright at h ≈ 0.27 m.
+- **Distance**: R_dist = distance_weight × x_distance. **Positive x = forward = good. Negative x = backward = bad.**
+
+Total reward = R_pose + R_dist. To get high reward you MUST move in the +x direction while staying stable.
+
+{% include 'shared/history.j2' %}
+
+# Output format
+
+Respond with a short explanation, followed by a fenced Python code block containing a **list of exactly 4 Policy objects**.
+
+Row order in foot_targets: FR (row 0), FL (row 1), RR (row 2), RL (row 3).
+Pair A = FL (row 1) + RR (row 2). Pair B = FR (row 0) + RL (row 3).
+
+```python
+[
+    # Phase 1: Pair A swings forward, Pair B planted
+    Policy(
+        foot_targets=np.array([...]),  # 4x2 array
+    ),
+    # Phase 2: transition
+    Policy(
+        foot_targets=np.array([...]),
+    ),
+    # Phase 3: Pair B swings forward, Pair A planted
+    Policy(
+        foot_targets=np.array([...]),
+    ),
+    # Phase 4: transition
+    Policy(
+        foot_targets=np.array([...]),
+    ),
+]
+```
+
+Now provide your 4 gait cycle policies for iteration {{ iter_idx }} of {{ max_iters }}.

@@ -1,6 +1,12 @@
 """Entry point for primitive_go2.
 
-    python main.py --config configs/sit.yaml
+Dispatches to the appropriate runner based on task name:
+  - Tasks ending in '_code' use the code-as-policy runner
+  - All other tasks use the keyframe (foot position) runner
+
+    python main.py --config configs/sit.yaml           # keyframe
+    python main.py --config configs/sit_code.yaml      # code-as-policy
+    python main.py --config configs/walk_ollama.yaml   # keyframe (walk)
     python main.py --config configs/sit.yaml --resume logs/sit_2026-04-22_05-13-50/trial_log.json
 """
 
@@ -13,7 +19,6 @@ import logging
 import sys
 
 from config import load_config
-from runner.primitivellm import run
 
 
 def main():
@@ -31,6 +36,12 @@ def main():
     )
 
     cfg = load_config(args.config)
+
+    if cfg.task.name.endswith('_code'):
+        from runner.primitivellm import run
+    else:
+        from runner.keyframe_runner import run
+
     run(cfg, resume_log_path=args.resume)
 
 
