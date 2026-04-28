@@ -1,11 +1,8 @@
 """Trial history (Γ) for the FORGE loop.
 
-Accumulates (iteration, policies, rewards, rationale) records across iterations
+Accumulates (iteration, code, reward, rationale) records across iterations
 and provides them as TrialRecord objects for prompt rendering. Supports
 JSON persistence so runs can be resumed or inspected after the fact.
-
-Handles both single-task runs (one policy, one reward) and sequence runs
-(multiple policies, multiple rewards with per-step thresholds).
 """
 
 import json
@@ -13,53 +10,30 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
-from agent.policy import Policy
-
 
 @dataclass
 class TrialEntry:
-    """One iteration of the FORGE loop.
-
-    For single tasks: policies has 1 item, rewards has 1 item.
-    For sequences:    policies has N items, rewards has N items.
-    """
+    """One iteration of the FORGE loop."""
     iteration: int
-    policies: list[Policy]
-    rewards: list[float]
+    code: str
+    reward: float
     rationale: str = ""
-    step_names: list[str] = field(default_factory=list)
-
-    @property
-    def reward(self) -> float:
-        """Total reward (sum of all step rewards). Used for best-of ranking."""
-        return sum(self.rewards)
 
     def to_dict(self) -> dict:
         return {
             'iteration': self.iteration,
-            'policies': [p.to_dict() for p in self.policies],
-            'rewards': self.rewards,
+            'code': self.code,
+            'reward': self.reward,
             'rationale': self.rationale,
-            'step_names': self.step_names,
         }
 
     @classmethod
     def from_dict(cls, d: dict) -> 'TrialEntry':
-        # Backward compatible: old logs have 'policy' and 'reward' (singular)
-        if 'policy' in d and 'policies' not in d:
-            policies = [Policy.from_dict(d['policy'])]
-            rewards = [d['reward']]
-            step_names = d.get('step_names', [])
-        else:
-            policies = [Policy.from_dict(p) for p in d['policies']]
-            rewards = d['rewards']
-            step_names = d.get('step_names', [])
         return cls(
             iteration=d['iteration'],
-            policies=policies,
-            rewards=rewards,
+            code=d['code'],
+            reward=d['reward'],
             rationale=d.get('rationale', ''),
-            step_names=step_names,
         )
 
 
@@ -69,20 +43,13 @@ class TrialLog:
     def __init__(self, entries: list[TrialEntry] | None = None):
         self.entries: list[TrialEntry] = list(entries) if entries else []
 
-    def append(
-        self,
-        policies: list[Policy],
-        rewards: list[float],
-        rationale: str = "",
-        step_names: list[str] | None = None,
-    ):
+    def append(self, code: str, reward: float, rationale: str = ""):
         """Add a new entry. Iteration number is inferred from current length."""
         entry = TrialEntry(
             iteration=len(self.entries) + 1,
-            policies=policies,
-            rewards=rewards,
+            code=code,
+            reward=reward,
             rationale=rationale,
-            step_names=step_names or [],
         )
         self.entries.append(entry)
 
@@ -97,7 +64,7 @@ class TrialLog:
 
     @property
     def best(self) -> TrialEntry | None:
-        """Entry with the highest total reward, or None if empty."""
+        """Entry with the highest reward, or None if empty."""
         if not self.entries:
             return None
         return max(self.entries, key=lambda e: e.reward)
@@ -107,25 +74,14 @@ class TrialLog:
         from agent.prompt import TrialRecord
         records = []
         for e in self.entries:
-            if len(e.policies) == 1:
-                # Single task — same format as before
-                policy_summary = _summarize_policy(e.policies[0])
-                reward_summary = f"{e.rewards[0]:.4f}"
-            else:
-                # Sequence — show each step
-                parts = []
-                for i, (pol, rew) in enumerate(zip(e.policies, e.rewards)):
-                    name = e.step_names[i] if i < len(e.step_names) else f"step_{i+1}"
-                    parts.append(f"  {name}: {_summarize_policy(pol)}  reward={rew:.4f}")
-                policy_summary = "\n".join(parts)
-                reward_summary = " | ".join(
-                    f"{e.step_names[i] if i < len(e.step_names) else f'step_{i+1}'}: {r:.4f}"
-                    for i, r in enumerate(e.rewards)
-                )
+            # Indent the code for cleaner display in the prompt
+            indented_code = "\n".join(
+                f"        {line}" for line in e.code.splitlines()
+            )
             records.append(TrialRecord(
                 iteration=e.iteration,
-                policy_summary=policy_summary,
-                reward=reward_summary,
+                policy_summary=indented_code,
+                reward=e.reward,
                 rationale=e.rationale,
             ))
         return records
@@ -142,14 +98,7 @@ class TrialLog:
         """Load from JSON."""
         with open(path) as f:
             data = json.load(f)
+
+
         return cls([TrialEntry.from_dict(d) for d in data])
-
-
-def _summarize_policy(policy: Policy) -> str:
-    """One-line human-readable summary of a Policy for the prompt history."""
-    ft = policy.foot_targets
-    parts = []
-    for leg, row in zip(['FR', 'FL', 'RR', 'RL'], ft):
-        parts.append(f"{leg}=({row[0]:+.3f},{row[1]:+.3f})")
-    feet_str = ' '.join(parts)
-    return f"{feet_str}"
+>>>>>>> aea4eb5 ( Phase 1: primitives)

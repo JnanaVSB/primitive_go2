@@ -17,9 +17,7 @@ class TrialRecord:
     """One row of trial history, as seen by the prompt template.
 
     The template renders these into the history section. The runner builds
-    them from the log of (policy, reward, rationale) tuples.
-
-    reward can be a float (single task) or a string (sequence, e.g. "lay: -0.02 | stand: -1.50").
+    them from the log of (code, reward, rationale) tuples.
     """
     iteration: int
     policy_summary: str
@@ -31,8 +29,7 @@ class PromptBuilder:
     """Renders task prompts from Jinja templates.
 
     Args:
-        templates_dir: path to the templates directory (contains sit.j2,
-                       lay.j2, and a shared/ subfolder).
+        templates_dir: path to the templates directory.
     """
 
     def __init__(self, templates_dir: str | Path):
@@ -41,7 +38,7 @@ class PromptBuilder:
             raise FileNotFoundError(f"Templates directory not found: {self.templates_dir}")
         self.env = Environment(
             loader=FileSystemLoader(str(self.templates_dir)),
-            undefined=StrictUndefined,       # fail loudly on missing variables
+            undefined=StrictUndefined,
             trim_blocks=True,
             lstrip_blocks=True,
         )
@@ -52,20 +49,20 @@ class PromptBuilder:
         iter_idx: int,
         max_iters: int,
         trial_history: Iterable[TrialRecord] = (),
+        **kwargs,
     ) -> str:
         """Render the prompt for a task.
 
         Args:
-            task:          task name, e.g. 'sit' or 'lay' (maps to <task>.j2).
+            task:          template name without extension (e.g. 'code_policy').
             iter_idx:      1-based current iteration number.
             max_iters:     total iteration budget for this task.
             trial_history: prior (iteration, policy_summary, reward, rationale) records.
+            **kwargs:      additional template variables (e.g. task_description,
+                           distance_weight).
 
         Returns:
             The full prompt string to send to the LLM.
-
-        Raises:
-            FileNotFoundError: no template named <task>.j2 exists.
         """
         template_name = f"{task}.j2"
         try:
@@ -79,4 +76,5 @@ class PromptBuilder:
             iter_idx=iter_idx,
             max_iters=max_iters,
             trial_history=list(trial_history),
+            **kwargs,
         )

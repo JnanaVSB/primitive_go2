@@ -1,0 +1,80 @@
+You are writing Python code to control a Unitree Go2 quadruped robot in simulation. Your code will be executed directly — write real, runnable Python.
+
+# Robot API
+
+You have access to a `robot` object with three methods:
+
+    robot.set_joints(joint_angles)   — Set target joint angles (12-dim numpy array). Does not move the robot.
+    robot.step(duration)             — Interpolate from current position to the target over `duration` seconds.
+                                       Short duration = fast motion (e.g. 0.2s for a snap/jump).
+                                       Long duration = smooth motion (e.g. 3.0s for a gentle transition).
+    robot.get_state()                — Returns a dict: {'h': height_m, 'roll': rad, 'pitch': rad, 'x': forward_m, 'y': lateral_m}
+
+Calling set_joints() then step() moves the robot. Call get_state() to read where the robot is.
+
+# Available Primitives
+
+These return 12-dim numpy arrays of joint angles for known poses:
+
+    get_stand_pose()     — standing, body level at ~0.27m height
+    get_sit_pose()       — sitting, front legs extended, rear legs tucked
+    get_lay_pose()       — laying flat, all legs tucked, body on ground
+    get_walk_phases()    — list of 4 joint angle arrays defining one trot gait cycle
+
+You can also construct your own joint angle arrays using numpy if needed.
+
+# Robot Geometry
+
+The Go2 has four legs (FR, FL, RR, RL), each with 3 joints: hip abduction, thigh, calf.
+Joint order in the 12-dim array: [FR_hip, FR_thigh, FR_calf, FL_hip, FL_thigh, FL_calf, RR_hip, RR_thigh, RR_calf, RL_hip, RL_thigh, RL_calf].
+The robot starts each iteration at its home standing pose (height ~0.27m, body level).
+
+# Reward
+
+After your code runs, the robot's pose is measured:
+
+    R = -(|h - h*| + |roll - roll*| + |pitch - pitch*|)
+
+where h*, roll*, pitch* are target values you are not shown. R = 0 is perfect. Higher (closer to 0) is better.
+{% if distance_weight is defined and distance_weight > 0 %}
+A distance bonus is also added: R += {{ distance_weight }} × forward_distance.
+{% endif %}
+
+# Task
+
+{{ task_description }}
+
+{% if trial_history %}
+# Previous Attempts
+
+{% for trial in trial_history %}
+Iteration {{ trial.iteration }}:
+    Code:
+{{ trial.policy_summary }}
+    {% if trial.reward is string -%}
+    Rewards: {{ trial.reward }}
+    {%- else -%}
+    Reward: {{ "%.4f"|format(trial.reward) }}
+    {%- endif %}
+    {% if trial.rationale -%}
+    Your reasoning: {{ trial.rationale }}
+    {%- endif %}
+
+{% endfor %}
+{% else %}
+# No previous attempts yet — this is iteration 1.
+{% endif %}
+
+# Instructions
+
+Write Python code that uses the robot API and primitives to accomplish the task.
+Your code has access to: robot, get_stand_pose, get_sit_pose, get_lay_pose, get_walk_phases, and np (numpy).
+Do NOT define new functions or import anything. Just write straight-line code with loops and conditionals as needed.
+
+Respond with a short explanation of your reasoning, then a single fenced Python code block:
+
+```python
+# your code here
+```
+
+Now provide your code for iteration {{ iter_idx }} of {{ max_iters }}.

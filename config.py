@@ -84,7 +84,9 @@ class TaskStep:
 @dataclass
 class TaskConfig:
     name: str
+    description: str = ""
     target: TargetPose | None = None
+    distance_weight: float = 0.0
     sequence: list[TaskStep] | None = None
 
     @property
@@ -139,11 +141,17 @@ def load_config(path: str | Path) -> Config:
             )
             for step in task_raw['sequence']
         ]
-        task = TaskConfig(name=task_raw['name'], sequence=sequence)
+        task = TaskConfig(
+            name=task_raw['name'],
+            description=task_raw.get('description', ''),
+            sequence=sequence,
+        )
     else:
         task = TaskConfig(
             name=task_raw['name'],
+            description=task_raw.get('description', ''),
             target=TargetPose(**task_raw['target']),
+            distance_weight=task_raw.get('distance_weight', 0.0),
         )
 
     return Config(
