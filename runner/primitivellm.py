@@ -118,7 +118,7 @@ def run(cfg: Config, resume_log_path: str | None = None) -> TrialLog:
         if passed:
             print(f"\nTask passed at iteration {i}!")
             logger.info(f"Task passed at iteration {i}")
->>>>>>> aea4eb5 ( Phase 1: primitives)
+
             break
 
     best = trial_log.best
@@ -219,7 +219,6 @@ def _execute_and_reward(
 
         state = robot.get_state()
         reward = compute_pose_reward(state, target, distance_weight=distance_weight)
->>>>>>> aea4eb5 ( Phase 1: primitives)
 
         logger.info(
             f"Post-execution state: "
@@ -240,7 +239,7 @@ def _execute_and_reward(
 
 
 
->>>>>>> aea4eb5 ( Phase 1: primitives)
+
 
 def _setup_run_dir(cfg: Config, resume_log_path: str | None) -> Path:
     if resume_log_path:

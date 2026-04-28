@@ -1,0 +1,25 @@
+{% extends "shared/code_policy.j2" %}
+
+{% block task_description %}
+The robot must perform the following sequence:
+
+1. Start in standing position
+2. Transition to sitting position
+3. Transition to laying position
+4. Transition back to standing position
+
+Requirements:
+- Use the provided pose primitives:
+  - get_stand_pose()
+  - get_sit_pose()
+  - get_lay_pose()
+
+- Move through poses in a stable and controlled manner
+- Call robot.set_joints(...) to move to each pose
+- Call robot.step(...) after each pose transition
+- Hold each pose long enough for the robot to stabilize
+- Final pose must be standing
+
+Goal:
+Complete the full sequence smoothly without falling or unstable movements.
+{% endblock %}

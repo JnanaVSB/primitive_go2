@@ -101,4 +101,4 @@ class TrialLog:
 
 
         return cls([TrialEntry.from_dict(d) for d in data])
->>>>>>> aea4eb5 ( Phase 1: primitives)
+
