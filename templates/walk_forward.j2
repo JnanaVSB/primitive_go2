@@ -6,81 +6,86 @@
 
 # Task: walk forward
 
-Make the robot walk **forward** (in the +x direction). You must produce exactly **4 Policy objects** that define one complete trot gait cycle. This cycle will be **looped automatically** for several seconds.
+Make the robot walk **forward** (increasing world x position). You must produce exactly **4 Policy objects** that define one complete trot gait cycle. This cycle will be **looped automatically** for several seconds.
 
-## How forward walking works
+## CRITICAL: coordinate convention
 
-A quadruped walks forward using a trot gait with **diagonal leg pairs**:
-- **Pair A** = front-left (FL, row 1) + rear-right (RR, row 2)
-- **Pair B** = front-right (FR, row 0) + rear-left (RL, row 3)
+In the body frame, **decreasing foot_x** moves the foot **forward** in the world. This is counterintuitive but correct for this robot model. To make the robot walk forward:
+- Swinging legs must move foot_x **below** their neutral value (more negative = more forward in the world).
+- Never move any foot_x above its neutral value — that moves the foot backward.
 
-### The push-swing cycle
+Neutral foot_x: front legs = +0.1934, rear legs = -0.1934.
 
-To move the body **forward**, planted legs must push **backward** relative to the body:
-- A **planted** leg has foot on the ground (foot_z ≈ -0.27) and its foot_x is **behind** the neutral position. As the body moves forward over the planted foot, the foot effectively pushes the body ahead.
-- A **swinging** leg is lifted (foot_z ≈ -0.15 to -0.18) and moves its foot_x **ahead** of neutral to prepare for the next plant.
+## Gait structure
 
-### Phase breakdown
+Two diagonal pairs take turns:
+- **Pair A** = FL (row 1) + RR (row 2)
+- **Pair B** = FR (row 0) + RL (row 3)
 
-Neutral foot_x positions: front legs ≈ +0.1934, rear legs ≈ -0.1934.
+Ground level: foot_z = -0.27. Lifted: foot_z = -0.15 to -0.18.
 
-1. **Phase 1** — Pair A swings, Pair B planted:
-   - FL (row 1): foot_x > +0.1934 (forward of neutral), foot_z lifted
-   - RR (row 2): foot_x < -0.1934 (forward of neutral for rear = more negative), foot_z lifted
-   - FR (row 0): foot_x < +0.1934 (behind neutral), foot_z = -0.27
-   - RL (row 3): foot_x > -0.1934 (behind neutral for rear = less negative), foot_z = -0.27
+## Walking pattern
 
-2. **Phase 2** — Transition: all feet planted at their current positions (foot_z = -0.27)
+**Phase 1 — Pair A reaches forward and lifts:**
+Pair A (FL + RR) lifts off the ground and swings forward. Pair B (FR + RL) stays planted at neutral.
+- FR: foot_x = +0.1934 (neutral), foot_z = -0.27
+- FL: foot_x = +0.1634 (forward = below neutral), foot_z = -0.15 (lifted)
+- RR: foot_x = -0.2234 (forward = below neutral), foot_z = -0.15 (lifted)
+- RL: foot_x = -0.1934 (neutral), foot_z = -0.27
 
-3. **Phase 3** — Pair B swings, Pair A planted:
-   - FR (row 0): foot_x > +0.1934 (forward of neutral), foot_z lifted
-   - RL (row 3): foot_x < -0.1934 (forward of neutral for rear), foot_z lifted
-   - FL (row 1): foot_x < +0.1934 (behind neutral), foot_z = -0.27
-   - RR (row 2): foot_x > -0.1934 (behind neutral for rear), foot_z = -0.27
+**Phase 2 — Pair A plants ahead:**
+Pair A plants down at their forward positions. Body gets pulled forward.
+- FR: foot_x = +0.1934 (neutral), foot_z = -0.27
+- FL: foot_x = +0.1634 (forward, planted), foot_z = -0.27
+- RR: foot_x = -0.2234 (forward, planted), foot_z = -0.27
+- RL: foot_x = -0.1934 (neutral), foot_z = -0.27
 
-4. **Phase 4** — Transition: all feet planted at their current positions (foot_z = -0.27)
+**Phase 3 — Pair B reaches forward and lifts:**
+Pair B (FR + RL) lifts and swings forward. Pair A stays planted.
+- FR: foot_x = +0.1634 (forward = below neutral), foot_z = -0.15 (lifted)
+- FL: foot_x = +0.1634 (forward, planted), foot_z = -0.27
+- RR: foot_x = -0.2234 (forward, planted), foot_z = -0.27
+- RL: foot_x = -0.2234 (forward = below neutral), foot_z = -0.15 (lifted)
 
-### Critical constraints
+**Phase 4 — Pair B plants ahead:**
+All legs now at forward positions. Body pulled forward again.
+- FR: foot_x = +0.1634 (forward, planted), foot_z = -0.27
+- FL: foot_x = +0.1634 (forward, planted), foot_z = -0.27
+- RR: foot_x = -0.2234 (forward, planted), foot_z = -0.27
+- RL: foot_x = -0.2234 (forward, planted), foot_z = -0.27
 
-- **Small steps**: offset from neutral should be 0.02 to 0.04 m. Larger causes stumbling.
-- **Sufficient lift**: swinging foot_z should be -0.15 to -0.18. Too close to -0.27 drags on ground.
-- **Symmetry**: what Pair A does in phases 1-2, Pair B mirrors in phases 3-4.
-- **Stay level**: minimize roll and pitch. Asymmetric steps cause tipping.
+## Constraints
+
+- Step offset: 0.03 to 0.04 m **below** neutral foot_x. Example: front neutral +0.1934 → forward target +0.1534 to +0.1634.
+- Swing lift: foot_z = -0.15 to -0.18.
+- Never increase foot_x above neutral — that moves the foot backward in the world.
+- Keep the gait symmetric between pairs.
+- Keep the body level.
 
 ## Reward
 
-- **Pose**: R_pose = -(|Δh| + |Δroll| + |Δpitch|). Stay upright at h ≈ 0.27 m.
-- **Distance**: R_dist = distance_weight × x_distance. **Positive x = forward = good. Negative x = backward = bad.**
+R = -(|Δh| + |Δroll| + |Δpitch|) + distance_weight × x_distance
 
-Total reward = R_pose + R_dist. To get high reward you MUST move in the +x direction while staying stable.
+**Positive world x = forward = good. Negative world x = backward = bad.**
 
 {% include 'shared/history.j2' %}
 
 # Output format
 
-Respond with a short explanation, followed by a fenced Python code block containing a **list of exactly 4 Policy objects**.
-
-Row order in foot_targets: FR (row 0), FL (row 1), RR (row 2), RL (row 3).
-Pair A = FL (row 1) + RR (row 2). Pair B = FR (row 0) + RL (row 3).
+Respond with a short explanation, then a fenced Python code block with exactly 4 Policy objects.
+Row order: FR (row 0), FL (row 1), RR (row 2), RL (row 3).
+Remember: **lower foot_x = forward in the world**.
 
 ```python
 [
-    # Phase 1: Pair A swings forward, Pair B planted
-    Policy(
-        foot_targets=np.array([...]),  # 4x2 array
-    ),
-    # Phase 2: transition
-    Policy(
-        foot_targets=np.array([...]),
-    ),
-    # Phase 3: Pair B swings forward, Pair A planted
-    Policy(
-        foot_targets=np.array([...]),
-    ),
-    # Phase 4: transition
-    Policy(
-        foot_targets=np.array([...]),
-    ),
+    # Phase 1: Pair A swings forward (lower foot_x + lift), Pair B at neutral
+    Policy(foot_targets=np.array([...])),
+    # Phase 2: Pair A plants ahead
+    Policy(foot_targets=np.array([...])),
+    # Phase 3: Pair B swings forward (lower foot_x + lift), Pair A planted
+    Policy(foot_targets=np.array([...])),
+    # Phase 4: Pair B plants ahead
+    Policy(foot_targets=np.array([...])),
 ]
 ```
 

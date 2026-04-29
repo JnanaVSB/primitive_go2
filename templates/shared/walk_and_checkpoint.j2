@@ -8,8 +8,7 @@ For walking, use the Bezier gait planner instead of manual joint angles:
 
     for i in range(n_steps):
         phi = (i * robot.dt / period) % 1.0
-        robot.set_joints(walk_step(planner, phi))
-        robot.step(robot.dt)
+        robot.step_direct(walk_step(planner, phi))
 
 Parameters for get_walk_planner:
     stride_length: forward distance per cycle in meters (default 0.10, range 0.04–0.15)

@@ -1,0 +1,35 @@
+{% include 'shared/role_code.j2' %}
+
+{% include 'shared/api_code.j2' %}
+
+{% include 'shared/walk_and_checkpoint.j2' %}
+
+# Task: walk forward
+
+Make the robot walk forward using the walk planner. The robot should walk stably for several seconds, maintaining its height and body level while covering as much forward distance as possible.
+
+Use the Bezier gait planner — do NOT try to manually set joint angles for walking.
+Use robot.step_direct() for the walk loop — do NOT use robot.step(robot.dt).
+
+Example:
+
+    walk = get_walk_planner(stride_length=0.10, swing_height=0.08)
+    planner = walk['planner']
+    period = walk['cycle_period']
+
+    n_steps = int(10.0 / robot.dt)  # walk for 10 seconds
+    for i in range(n_steps):
+        phi = (i * robot.dt / period) % 1.0
+        robot.step_direct(walk_step(planner, phi))
+
+You can tune stride_length, swing_height, and cycle_period to improve stability and distance.
+
+## Reward
+
+R = -(|Δh| + |Δroll| + |Δpitch|) + 0.005 × forward_distance
+
+Stay upright and level (h ≈ 0.27m, roll ≈ 0, pitch ≈ 0) while moving forward. Stability matters more than speed.
+
+{% include 'shared/history_code.j2' %}
+
+{% include 'shared/output_code.j2' %}

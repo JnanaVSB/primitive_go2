@@ -101,6 +101,21 @@ class RobotAPI:
             action = traj(t)
             self._env.step(action)
 
+    def step_direct(self, joint_angles: np.ndarray = None):
+        """Send joint angles directly to the PD controller for one control step.
+
+        Unlike step(), this does NOT interpolate. It sends the joint angles
+        straight to the env and advances by one dt. Use this for walk gait
+        loops where the planner provides smooth targets every timestep.
+
+        Args:
+            joint_angles: 12-dim array of joint angle targets. If None,
+                          uses the last targets set via set_joints().
+        """
+        if joint_angles is not None:
+            self._target_joints = np.asarray(joint_angles, dtype=np.float64).flatten()[:12]
+        self._env.step(self._target_joints)
+
     def get_state(self) -> dict:
         """Read the current robot state.
 

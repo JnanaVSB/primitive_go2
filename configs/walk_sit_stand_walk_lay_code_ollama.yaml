@@ -18,13 +18,13 @@ llm:
   model: gpt-oss:120b
   temperature: 0.7
   max_tokens: 4000
-  base_url: http://sg008:11434
+  base_url: http://sg002:11434
   max_retries: 5
   retry_delay: 120.0
 
 runner:
   max_iterations: 15
-  success_threshold: -0.10
+  success_threshold: 5
   max_parse_retries: 3
   templates_dir: templates
   log_dir: logs

@@ -26,6 +26,8 @@ class RenderingEnv:
 
     Frame capture runs once per step() call (after the env's control
     substeps), not every physics step — keeps video size manageable.
+
+    The camera tracks the robot's body so it stays in frame during locomotion.
     """
 
     def __init__(self, env, width: int = 640, height: int = 480, fps: int = 30):
@@ -34,6 +36,20 @@ class RenderingEnv:
         self._frames: list[np.ndarray] = []
         self.fps = fps
 
+        # Set up a tracking camera
+        self._camera = mujoco.MjvCamera()
+        self._camera.type = mujoco.mjtCamera.mjCAMERA_TRACKING
+        # Track the robot's torso body
+        self._camera.trackbodyid = mujoco.mj_name2id(
+            env.model, mujoco.mjtObj.mjOBJ_BODY, 'base_link'
+        )
+        if self._camera.trackbodyid < 0:
+            # Fallback: track body index 1 (usually the root body)
+            self._camera.trackbodyid = 1
+        self._camera.distance = 1.5
+        self._camera.azimuth = 135
+        self._camera.elevation = -20
+
     # Delegate attribute access to the wrapped env so primitive.py
     # and kinematics.py work transparently.
     def __getattr__(self, name):
@@ -41,7 +57,7 @@ class RenderingEnv:
 
     def step(self, action):
         result = self._env.step(action)
-        self._renderer.update_scene(self._env.data)
+        self._renderer.update_scene(self._env.data, self._camera)
         self._frames.append(self._renderer.render().copy())
         return result
 

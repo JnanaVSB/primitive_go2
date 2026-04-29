@@ -6,6 +6,8 @@ You have access to a `robot` object with these methods:
     robot.step(duration)             — Interpolate from current position to the target over `duration` seconds.
                                        Short duration = fast motion (e.g. 0.2s for a snap/jump).
                                        Long duration = smooth motion (e.g. 3.0s for a gentle transition).
+    robot.step_direct(joint_angles)  — Send joint angles directly for one timestep (no interpolation).
+                                       Use this inside walk gait loops. If no argument, uses last set_joints().
     robot.get_state()                — Returns a dict: {'h': height_m, 'roll': rad, 'pitch': rad, 'x': forward_m, 'y': lateral_m}
     robot.checkpoint(name)           — Record current state as a named checkpoint. Call after each subtask.
     robot.dt                         — Simulation timestep in seconds. Use for walk gait loops.
