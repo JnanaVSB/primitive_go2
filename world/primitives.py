@@ -57,44 +57,44 @@ def get_sit_pose() -> np.ndarray:
     ])
 
 
-def get_walk_phases() -> list[np.ndarray]:
-    """Four-phase trot gait cycle.
+def get_walk_planner(
+    stride_length: float = 0.10,
+    swing_height: float = 0.08,
+    body_height: float = 0.27,
+    cycle_period: float = 0.4,
+) -> dict:
+    """Create a walk gait planner with the given parameters.
 
-    Phase 1: Pair A (FL+RR) swings forward, Pair B (FR+RL) planted.
-    Phase 2: All legs planted (transition).
-    Phase 3: Pair B (FR+RL) swings forward, Pair A (FL+RR) planted.
-    Phase 4: All legs planted (transition).
+    Returns a dict containing the planner and cycle_period so the LLM
+    can use it in a walk loop. The planner uses a Bezier trot gait
+    based on the MIT Cheetah trajectory planner.
 
-    Note: this gait is a rough starting point — the robot currently
-    moves backward with these values.
+    Usage:
+        walk = get_walk_planner(stride_length=0.10, swing_height=0.08)
+        planner = walk['planner']
+        period = walk['cycle_period']
+
+        for step in range(n_steps):
+            phi = (step * dt / period) % 1.0
+            joints = walk_step(planner, phi)
+            robot.set_joints(joints)
+            robot.step(dt)
+
+    Args:
+        stride_length: total forward foot travel per cycle in meters (default 0.10).
+        swing_height:  peak foot lift during swing in meters (default 0.08).
+        body_height:   nominal body height in meters (default 0.27).
+        cycle_period:  seconds per full gait cycle (default 0.4).
+
+    Returns:
+        dict with 'planner' (BezierGaitPlanner) and 'cycle_period' (float).
     """
-    return [
-        # Phase 1
-        np.array([
-            0.0,  0.728282, -1.750720,  # FR: planted
-            0.0,  1.458392, -2.395579,  # FL: swinging
-            0.0,  1.458392, -2.395579,  # RR: swinging
-            0.0,  0.728282, -1.750720,  # RL: planted
-        ]),
-        # Phase 2
-        np.array([
-            0.0,  0.645511, -1.728361,  # FR
-            0.0,  1.022439, -1.750720,  # FL
-            0.0,  1.022439, -1.750720,  # RR
-            0.0,  0.645511, -1.728361,  # RL
-        ]),
-        # Phase 3
-        np.array([
-            0.0,  1.458392, -2.395579,  # FR: swinging
-            0.0,  0.956029, -1.764179,  # FL: planted
-            0.0,  0.956029, -1.764179,  # RR: planted
-            0.0,  1.458392, -2.395579,  # RL: swinging
-        ]),
-        # Phase 4
-        np.array([
-            0.0,  1.022439, -1.750720,  # FR
-            0.0,  0.884337, -1.768673,  # FL
-            0.0,  0.884337, -1.768673,  # RR
-            0.0,  1.022439, -1.750720,  # RL
-        ]),
-    ]
+    from world.walk_gait import make_walk_planner
+    return {
+        'planner': make_walk_planner(
+            stride_length=stride_length,
+            swing_height=swing_height,
+            body_height=body_height,
+        ),
+        'cycle_period': cycle_period,
+    }

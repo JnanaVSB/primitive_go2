@@ -1,8 +1,9 @@
 """FORGE-style policy search loop for code-as-policy.
 
-Iteratively prompts an LLM to produce Python code that controls the robot
-via primitives and the robot API, executes the code in a sandbox, scores
-by pose distance, and feeds the trial history back as context.
+Supports two modes:
+  1. Single task: config has target + distance_weight. Reward from final state.
+  2. Checkpoint sequence: config has checkpoints list. Per-task rewards from
+     robot.checkpoint() calls made by the LLM's code.
 
 Artifacts per run:
     logs/<task>_<ISO-timestamp>/
@@ -25,6 +26,7 @@ from config import Config
 from env.env import Go2Env
 from env.reward import compute_pose_reward
 from world.robot_api import RobotAPI
+from world.kinematics import Go2Kinematics
 from runner.code_executor import execute_policy_code
 from agent.prompt import PromptBuilder
 from agent.llm_agents import make_client
@@ -43,14 +45,18 @@ def run(cfg: Config, resume_log_path: str | None = None) -> TrialLog:
     _attach_run_log_file(run_dir)
     trial_log = _load_or_create_log(resume_log_path)
 
-    target = asdict(cfg.task.target) if cfg.task.target else {}
-    distance_weight = getattr(cfg.task, 'distance_weight', 0.0)
     success_threshold = cfg.runner.success_threshold
 
     logger.info(f"Run directory: {run_dir}")
     logger.info(f"Task: {cfg.task.name}")
+    if cfg.task.has_checkpoints:
+        cp_names = [cp.name for cp in cfg.task.checkpoints]
+        logger.info(f"Checkpoints: {cp_names}")
+        print(f"Task: {cfg.task.name} | Checkpoints: {cp_names}")
+    else:
+        print(f"Task: {cfg.task.name}")
     logger.info(f"Starting from iteration {len(trial_log) + 1}/{cfg.runner.max_iterations}")
-    print(f"Task: {cfg.task.name} | Iterations: {cfg.runner.max_iterations}")
+    print(f"Iterations: {cfg.runner.max_iterations}")
 
     prompt_builder = PromptBuilder(cfg.runner.templates_dir)
     llm = make_client(
@@ -73,7 +79,6 @@ def run(cfg: Config, resume_log_path: str | None = None) -> TrialLog:
             iter_idx=i,
             max_iters=cfg.runner.max_iterations,
             trial_history=trial_log.to_prompt_records(),
-            distance_weight=distance_weight,
         )
 
         # Get code from LLM with retries
@@ -93,24 +98,36 @@ def run(cfg: Config, resume_log_path: str | None = None) -> TrialLog:
         logger.info(f"[iter {i}] LLM rationale: {rationale}")
         logger.info(f"[iter {i}] LLM code:\n{code}")
 
-        # Execute code and compute reward
-        reward, exec_error = _execute_and_reward(
-            cfg, code, target, distance_weight,
-            run_dir / f"iter_{i:02d}.mp4",
+        # Execute code and compute reward(s)
+        reward, per_task_rewards, exec_error = _execute_and_reward(
+            cfg, code, run_dir / f"iter_{i:02d}.mp4",
         )
 
         if exec_error:
             logger.warning(f"[iter {i}] execution error: {exec_error}")
             rationale += f"\n\nExecution error: {exec_error}"
 
-        trial_log.append(code=code, reward=reward, rationale=rationale)
+        # Format reward string for display and trial log
+        if per_task_rewards:
+            reward_str = ", ".join(
+                f"{name}: {r:.4f}" for name, r in per_task_rewards.items()
+            )
+            reward_str += f" | total: {reward:.4f}"
+            print(f"[iter {i}] {reward_str}")
+            logger.info(f"[iter {i}] {reward_str}")
+        else:
+            print(f"[iter {i}] reward={reward:.4f}")
+            logger.info(f"[iter {i}] reward={reward:.4f}")
+
+        trial_log.append(
+            code=code,
+            reward=reward,
+            rationale=rationale,
+            per_task_rewards=per_task_rewards,
+        )
         trial_log.save(run_dir / "trial_log.json")
 
         passed = reward >= success_threshold
-        status = " PASS" if passed else ""
-        print(f"[iter {i}/{cfg.runner.max_iterations}] reward={reward:.4f}{status}")
-        logger.info(f"[iter {i}] reward={reward:.4f}")
-
         if passed:
             print(f"\nTask passed at iteration {i}!")
             logger.info(f"Task passed at iteration {i}")
@@ -128,14 +145,7 @@ def run(cfg: Config, resume_log_path: str | None = None) -> TrialLog:
 # ---------------------------------------------------------------------------
 
 def _extract_code(response: str) -> tuple[str, str]:
-    """Extract Python code block and rationale from LLM response.
-
-    Returns:
-        (code, rationale) — the code string and all non-code text.
-
-    Raises:
-        ValueError: no fenced code block found.
-    """
+    """Extract Python code block and rationale from LLM response."""
     matches = _CODE_BLOCK_RE.findall(response)
     if not matches:
         raise ValueError("No fenced Python code block found in response.")
@@ -183,16 +193,13 @@ def _generate_with_parse_retry(
 def _execute_and_reward(
     cfg: Config,
     code: str,
-    target: dict,
-    distance_weight: float,
     video_path: Path,
-) -> tuple[float, str]:
-    """Create env, run code via executor, compute reward.
+) -> tuple[float, dict | None, str]:
+    """Create env, run code via executor, compute reward(s).
 
     Returns:
-        (reward, error_message). error_message is "" on success.
+        (total_reward, per_task_rewards_dict_or_None, error_message).
     """
-    # Use normal stiffness by default for code-as-policy
     gains = cfg.stiffness_modes.get('normal', list(cfg.stiffness_modes.values())[0])
     base_env = Go2Env(
         xml_path=cfg.env.xml_path,
@@ -206,28 +213,90 @@ def _execute_and_reward(
     base_env.reset()
     env = RenderingEnv(base_env)
     robot = RobotAPI(env)
+    kin = Go2Kinematics(base_env.model)
 
     try:
-        result = execute_policy_code(code, robot)
+        result = execute_policy_code(code, robot, kinematics=kin)
 
-        state = robot.get_state()
-        reward = compute_pose_reward(state, target, distance_weight=distance_weight)
+        if cfg.task.has_checkpoints:
+            total_reward, per_task_rewards = _compute_checkpoint_rewards(
+                robot, cfg.task.checkpoints,
+            )
+        else:
+            target = asdict(cfg.task.target) if cfg.task.target else {}
+            distance_weight = getattr(cfg.task, 'distance_weight', 0.0)
+            state = robot.get_state()
+            total_reward = compute_pose_reward(state, target, distance_weight=distance_weight)
+            per_task_rewards = None
 
-        logger.info(
-            f"Post-execution state: "
-            f"x={state['x']:.4f} h={state['h']:.4f} "
-            f"roll={state['roll']:.4f} pitch={state['pitch']:.4f} "
-            f"reward={reward:.4f}"
-        )
+            logger.info(
+                f"Post-execution state: "
+                f"x={state['x']:.4f} h={state['h']:.4f} "
+                f"roll={state['roll']:.4f} pitch={state['pitch']:.4f} "
+                f"reward={total_reward:.4f}"
+            )
 
         env.save_video(video_path)
 
         if not result.success:
-            return reward, result.error
-        return reward, ""
+            return total_reward, per_task_rewards, result.error
+        return total_reward, per_task_rewards, ""
 
     finally:
         env.close()
+
+
+def _compute_checkpoint_rewards(robot, checkpoint_configs) -> tuple[float, dict]:
+    """Compute per-task rewards from robot checkpoints.
+
+    Matches checkpoint names from the robot to checkpoint configs.
+    Distance is computed relative to the previous checkpoint's x position.
+
+    Returns:
+        (total_reward, {name: reward} dict).
+    """
+    per_task = {}
+    prev_x = 0.0  # starting x position
+
+    for cp_cfg in checkpoint_configs:
+        # Find matching checkpoint from robot
+        matching = [cp for cp in robot.checkpoints if cp['name'] == cp_cfg.name]
+
+        if not matching:
+            # Checkpoint not called — penalty
+            per_task[cp_cfg.name] = _PARSE_FAIL_REWARD
+            logger.warning(f"Checkpoint '{cp_cfg.name}' not found in robot checkpoints")
+            continue
+
+        # Use the last one if called multiple times
+        cp_state = matching[-1]['state']
+
+        # Compute distance since last checkpoint
+        distance_since_last = cp_state['x'] - prev_x
+
+        # Build target dict
+        target = asdict(cp_cfg.target)
+
+        # Compute reward — use distance_since_last instead of absolute x
+        state_for_reward = dict(cp_state)
+        state_for_reward['x'] = distance_since_last
+
+        reward = compute_pose_reward(
+            state_for_reward, target, distance_weight=cp_cfg.distance_weight,
+        )
+
+        per_task[cp_cfg.name] = reward
+        prev_x = cp_state['x']
+
+        logger.info(
+            f"Checkpoint '{cp_cfg.name}': "
+            f"x={cp_state['x']:.4f} (dist={distance_since_last:.4f}) "
+            f"h={cp_state['h']:.4f} roll={cp_state['roll']:.4f} "
+            f"pitch={cp_state['pitch']:.4f} reward={reward:.4f}"
+        )
+
+    total = sum(per_task.values()) / len(per_task) if per_task else _PARSE_FAIL_REWARD
+    return total, per_task
 
 
 def _setup_run_dir(cfg: Config, resume_log_path: str | None) -> Path:
@@ -248,7 +317,6 @@ def _setup_run_dir(cfg: Config, resume_log_path: str | None) -> Path:
 
 
 def _attach_run_log_file(run_dir: Path):
-    """Add a FileHandler for structured logging to run_dir/run.log."""
     log_path = run_dir / "run.log"
     handler = logging.FileHandler(log_path, mode='a')
     handler.setLevel(logging.INFO)
@@ -272,7 +340,7 @@ def _load_or_create_log(resume_log_path: str | None) -> TrialLog:
 
 
 def _config_to_dict(cfg: Config) -> dict:
-    return {
+    d = {
         'env': asdict(cfg.env),
         'primitive': asdict(cfg.primitive),
         'stiffness_modes': {
@@ -282,7 +350,13 @@ def _config_to_dict(cfg: Config) -> dict:
         'runner': asdict(cfg.runner),
         'task': {
             'name': cfg.task.name,
-            'description': cfg.task.description,
-            'target': asdict(cfg.task.target) if cfg.task.target else None,
         },
     }
+    if cfg.task.target:
+        d['task']['target'] = asdict(cfg.task.target)
+    if cfg.task.has_checkpoints:
+        d['task']['checkpoints'] = [
+            {'name': cp.name, 'target': asdict(cp.target), 'distance_weight': cp.distance_weight}
+            for cp in cfg.task.checkpoints
+        ]
+    return d

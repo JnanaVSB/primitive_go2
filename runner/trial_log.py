@@ -1,12 +1,12 @@
 """Trial history (Γ) for the FORGE loop.
 
-Accumulates (iteration, code, reward, rationale) records across iterations
-and provides them as TrialRecord objects for prompt rendering. Supports
-JSON persistence so runs can be resumed or inspected after the fact.
+Accumulates (iteration, code, reward, per_task_rewards, rationale) records
+across iterations. Supports checkpoint-based per-task rewards and JSON
+persistence for resume and inspection.
 """
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
@@ -18,14 +18,18 @@ class TrialEntry:
     code: str
     reward: float
     rationale: str = ""
+    per_task_rewards: dict | None = None
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             'iteration': self.iteration,
             'code': self.code,
             'reward': self.reward,
             'rationale': self.rationale,
         }
+        if self.per_task_rewards:
+            d['per_task_rewards'] = self.per_task_rewards
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> 'TrialEntry':
@@ -34,6 +38,7 @@ class TrialEntry:
             code=d['code'],
             reward=d['reward'],
             rationale=d.get('rationale', ''),
+            per_task_rewards=d.get('per_task_rewards'),
         )
 
 
@@ -43,13 +48,15 @@ class TrialLog:
     def __init__(self, entries: list[TrialEntry] | None = None):
         self.entries: list[TrialEntry] = list(entries) if entries else []
 
-    def append(self, code: str, reward: float, rationale: str = ""):
+    def append(self, code: str, reward: float, rationale: str = "",
+               per_task_rewards: dict | None = None):
         """Add a new entry. Iteration number is inferred from current length."""
         entry = TrialEntry(
             iteration=len(self.entries) + 1,
             code=code,
             reward=reward,
             rationale=rationale,
+            per_task_rewards=per_task_rewards,
         )
         self.entries.append(entry)
 
@@ -74,14 +81,23 @@ class TrialLog:
         from agent.prompt import TrialRecord
         records = []
         for e in self.entries:
-            # Indent the code for cleaner display in the prompt
             indented_code = "\n".join(
                 f"        {line}" for line in e.code.splitlines()
             )
+
+            # Format reward: per-task breakdown if available, otherwise single number
+            if e.per_task_rewards:
+                reward_str = ", ".join(
+                    f"{name}: {r:.4f}" for name, r in e.per_task_rewards.items()
+                )
+                reward_str += f" | total: {e.reward:.4f}"
+            else:
+                reward_str = f"{e.reward:.4f}"
+
             records.append(TrialRecord(
                 iteration=e.iteration,
                 policy_summary=indented_code,
-                reward=e.reward,
+                reward=reward_str,
                 rationale=e.rationale,
             ))
         return records
@@ -98,7 +114,4 @@ class TrialLog:
         """Load from JSON."""
         with open(path) as f:
             data = json.load(f)
-
-
         return cls([TrialEntry.from_dict(d) for d in data])
-

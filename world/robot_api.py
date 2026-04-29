@@ -7,23 +7,31 @@ The LLM controls:
     - Which joint angles to target (via set_joints)
     - How long to interpolate to those angles (via step)
     - When to read state for reactive decisions (via get_state)
+    - When to mark task completion (via checkpoint)
 
 The infrastructure handles:
     - Quintic trajectory interpolation (smooth, no torque spikes)
     - PD control and physics stepping
     - Frame capture for video recording
+    - Per-task reward computation at checkpoints
 
 Usage (from LLM-generated code):
     robot.set_joints(get_stand_pose())
-    robot.step(2.0)             # interpolate to stand over 2 seconds
+    robot.step(2.0)
+    robot.checkpoint("stand")
+
+    walk = get_walk_planner(stride_length=0.10)
+    planner = walk['planner']
+    period = walk['cycle_period']
+    for i in range(100):
+        phi = (i * robot.dt / period) % 1.0
+        robot.set_joints(walk_step(planner, phi))
+        robot.step(robot.dt)
+    robot.checkpoint("walk_5m")
 
     robot.set_joints(get_sit_pose())
-    robot.step(0.3)             # fast transition — snap to sit
-
-    state = robot.get_state()   # check where we are
-    if state['h'] > 0.2:
-        robot.set_joints(get_lay_pose())
-        robot.step(1.0)
+    robot.step(2.0)
+    robot.checkpoint("sit")
 """
 
 import numpy as np
@@ -35,7 +43,7 @@ class RobotAPI:
     """LLM-facing robot interface.
 
     Wraps a Go2Env (or RenderingEnv) and provides set_joints / step /
-    get_state. All trajectory interpolation happens inside step().
+    get_state / checkpoint. All trajectory interpolation happens inside step().
 
     Args:
         env: a Go2Env or RenderingEnv instance (already reset).
@@ -44,6 +52,16 @@ class RobotAPI:
     def __init__(self, env):
         self._env = env
         self._target_joints = env.data.qpos[env._qpos_idx].copy()
+        self._checkpoints = []
+
+    @property
+    def dt(self) -> float:
+        """Simulation time step per control step in seconds.
+
+        Use this for walk gait loops:
+            phi = (step * robot.dt / cycle_period) % 1.0
+        """
+        return self._env.model.opt.timestep * self._env.control_substeps
 
     def set_joints(self, joint_angles: np.ndarray):
         """Set the target joint angles for the next step() call.
@@ -119,3 +137,22 @@ class RobotAPI:
             'x': x,
             'y': y,
         }
+
+    def checkpoint(self, name: str):
+        """Record the current state as a named checkpoint.
+
+        Call this after completing each subtask. The runner uses
+        checkpoints to compute per-task rewards.
+
+        Args:
+            name: label for this checkpoint (e.g. "walk_5m", "sit", "stand").
+        """
+        self._checkpoints.append({
+            'name': name,
+            'state': self.get_state(),
+        })
+
+    @property
+    def checkpoints(self) -> list[dict]:
+        """All recorded checkpoints as a list of {'name': str, 'state': dict}."""
+        return self._checkpoints

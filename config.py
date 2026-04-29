@@ -82,16 +82,29 @@ class TaskStep:
 
 
 @dataclass
+class CheckpointConfig:
+    """One checkpoint in a code-as-policy sequence task."""
+    name: str
+    target: TargetPose
+    distance_weight: float = 0.0
+
+
+@dataclass
 class TaskConfig:
     name: str
     description: str = ""
     target: TargetPose | None = None
     distance_weight: float = 0.0
     sequence: list[TaskStep] | None = None
+    checkpoints: list[CheckpointConfig] | None = None
 
     @property
     def is_sequence(self) -> bool:
         return self.sequence is not None
+
+    @property
+    def has_checkpoints(self) -> bool:
+        return self.checkpoints is not None and len(self.checkpoints) > 0
 
     @property
     def steps(self) -> list[TaskStep]:
@@ -145,6 +158,20 @@ def load_config(path: str | Path) -> Config:
             name=task_raw['name'],
             description=task_raw.get('description', ''),
             sequence=sequence,
+        )
+    elif 'checkpoints' in task_raw:
+        checkpoints = [
+            CheckpointConfig(
+                name=cp['name'],
+                target=TargetPose(**cp['target']),
+                distance_weight=cp.get('distance_weight', 0.0),
+            )
+            for cp in task_raw['checkpoints']
+        ]
+        task = TaskConfig(
+            name=task_raw['name'],
+            description=task_raw.get('description', ''),
+            checkpoints=checkpoints,
         )
     else:
         task = TaskConfig(
