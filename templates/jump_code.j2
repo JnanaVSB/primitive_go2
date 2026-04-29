@@ -1,0 +1,42 @@
+{% include 'shared/role_code.j2' %}
+
+{% include 'shared/api_code.j2' %}
+
+{% include 'shared/reward_code.j2' %}
+
+# Task: jump
+
+Make the robot jump straight up in place by crouching and then rapidly extending all four legs simultaneously.
+
+## The jump sequence
+
+1. **Crouch** — lower the body by bending ALL FOUR legs equally. Use a pose where all thigh and calf joints are bent more than standing. The body should drop evenly — no tilting, no sitting. All four legs must crouch the same amount.
+
+2. **Launch** — rapidly extend all four legs to full standing extension with a very short duration (0.1–0.15s). The fast extension pushes the body upward.
+
+3. **Land** — set the standing pose and step for 3–5 seconds to let the robot fly, land, and stabilize.
+
+## Critical rules
+
+- Do NOT use the sit pose or lay pose for crouching. Those are asymmetric (sit tucks rear legs only). The crouch must be symmetric — all four legs bend equally.
+- Build your own crouch pose: start from get_stand_pose() and increase ALL thigh angles and decrease ALL calf angles by the same amount for all four legs.
+- The deeper the crouch, the higher the jump. But too deep and the robot collapses. Try thigh offsets of +0.2 to +0.4 radians from standing.
+- The launch duration must be very short (0.1–0.15s). Longer durations produce a slow stand-up, not a jump.
+- Keep hip abduction joints (indices 0, 3, 6, 9) at zero throughout.
+- NEVER use `while True`. Use bounded `for` loops.
+
+Joint index reference:
+- FR: hip=0, thigh=1, calf=2
+- FL: hip=3, thigh=4, calf=5
+- RR: hip=6, thigh=7, calf=8
+- RL: hip=9, thigh=10, calf=11
+
+## Reward
+
+R = -(|Δh| + |Δroll| + |Δpitch| + |Δyaw|)
+
+Target is the standing pose: h=0.27, roll=0, pitch=0, yaw=0. The robot must land stably. Closer to 0 is better.
+
+{% include 'shared/history_code.j2' %}
+
+{% include 'shared/output_code.j2' %}

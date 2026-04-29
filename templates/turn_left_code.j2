@@ -1,0 +1,44 @@
+{% include 'shared/role_code.j2' %}
+
+{% include 'shared/api_code.j2' %}
+
+{% include 'shared/reward_code.j2' %}
+
+# Task: turn left 45 degrees
+
+Make the robot turn in place to the left by approximately 45 degrees (≈ 0.785 radians).
+
+You can read the current yaw with robot.get_state()['yaw']. Starting yaw ≈ 0.0. Target yaw ≈ +0.785 radians.
+
+## How to turn a quadruped
+
+To turn left in place, the left and right legs must push in opposite directions:
+- **Right legs (FR, RR)**: thigh angles move forward (extend) — pushes the right side forward
+- **Left legs (FL, RL)**: thigh angles move backward (tuck) — pulls the left side backward
+
+This creates a rotation around the body center. The hip abduction joints (indices 0, 3, 6, 9) stay at zero — turning is done with the thigh joints (indices 1, 4, 7, 10).
+
+Joint index reference:
+- FR: hip=0, thigh=1, calf=2
+- FL: hip=3, thigh=4, calf=5
+- RR: hip=6, thigh=7, calf=8
+- RL: hip=9, thigh=10, calf=11
+
+## Important rules
+
+- **NEVER use `while True` or unbounded loops.** Use `for` loops with a maximum iteration count (e.g. `for step in range(200)`).
+- Break out of the loop when the target yaw is reached.
+- Each turn step should be small — adjust thigh angles by 0.05 to 0.15 radians from the standing pose.
+- After each turn step, return to the standing pose briefly to stabilize.
+- Keep the robot at standing height throughout. Check get_state() regularly.
+- End in a stable standing pose.
+
+## Reward
+
+R = -(|Δh| + |Δroll| + |Δpitch| + |Δyaw|)
+
+Target: h=0.27, roll=0, pitch=0, yaw=0.785. Closer to 0 is better.
+
+{% include 'shared/history_code.j2' %}
+
+{% include 'shared/output_code.j2' %}

@@ -62,6 +62,7 @@ class TargetPose:
     h: float
     roll: float
     pitch: float
+    yaw: float = 0.0
 
 
 @dataclass

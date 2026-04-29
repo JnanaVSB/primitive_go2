@@ -124,6 +124,7 @@ class RobotAPI:
                 'h':     base height in meters
                 'roll':  body roll in radians
                 'pitch': body pitch in radians
+                'yaw':   body yaw in radians
                 'x':     forward position in meters
                 'y':     lateral position in meters
         """
@@ -132,7 +133,7 @@ class RobotAPI:
         y = float(qpos[1])
         h = float(qpos[2])
 
-        # Quaternion to roll/pitch (MuJoCo convention: w, x, y, z)
+        # Quaternion to roll/pitch/yaw (MuJoCo convention: w, x, y, z)
         w, qx, qy, qz = qpos[3:7]
 
         sinr_cosp = 2.0 * (w * qx + qy * qz)
@@ -145,10 +146,15 @@ class RobotAPI:
         else:
             pitch = float(np.arcsin(sinp))
 
+        siny_cosp = 2.0 * (w * qz + qx * qy)
+        cosy_cosp = 1.0 - 2.0 * (qy * qy + qz * qz)
+        yaw = float(np.arctan2(siny_cosp, cosy_cosp))
+
         return {
             'h': h,
             'roll': roll,
             'pitch': pitch,
+            'yaw': yaw,
             'x': x,
             'y': y,
         }

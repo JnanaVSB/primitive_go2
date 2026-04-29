@@ -1,0 +1,37 @@
+env:
+  xml_path: go2/scene.xml
+  control_substeps: 4
+  initial_base_height: 0.27
+  initial_angles: [0.0, 0.9, -1.8, 0.0, 0.9, -1.8, 0.0, 0.9, -1.8, 0.0, 0.9, -1.8]
+  settle_steps: 500
+
+primitive:
+  settle_steps_after: 500
+
+stiffness_modes:
+  soft:   {kp: 40.0,  kd: 3.0}
+  normal: {kp: 80.0,  kd: 4.0}
+  stiff:  {kp: 150.0, kd: 8.0}
+
+llm:
+  provider: ollama
+  model: gpt-oss:120b
+  temperature: 0.7
+  max_tokens: 4000
+  base_url: http://sg002:11434
+  max_retries: 5
+  retry_delay: 120.0
+
+runner:
+  max_iterations: 15
+  success_threshold: 1
+  max_parse_retries: 3
+  templates_dir: templates
+  log_dir: logs
+
+task:
+  name: jump_code
+  target:
+    h: 0.27
+    roll: 0.0
+    pitch: 0.0
